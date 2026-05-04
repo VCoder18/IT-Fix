@@ -1,10 +1,20 @@
-import type { Metadata } from 'next';
-import AppLayout from '../src/app/components/Layout';
-import '../src/styles/index.css';
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
-  title: 'IT Support Ticket Form',
-  description: 'ITFix support ticket portal',
+  title: "ITFix - IT Support Portal",
+  description: "Fast and reliable IT support for your business",
 };
 
 export default function RootLayout({
@@ -13,10 +23,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>
-        <AppLayout>{children}</AppLayout>
-      </body>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+    >
+      <body className="min-h-full flex flex-col bg-slate-950 text-white">{children}</body>
     </html>
   );
 }
