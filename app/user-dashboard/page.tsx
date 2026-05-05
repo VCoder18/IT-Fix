@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { ensureUserRole } from '@/lib/auth/ensure-user-role';
+import type { Tables } from '@/lib/database';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -28,6 +30,40 @@ type Ticket = {
   assignedTo?: string;
 };
 
+type TicketRow = Pick<
+  Tables<'tickets'>,
+  'id' | 'short_id' | 'title' | 'description' | 'category' | 'urgency' | 'status' | 'created_at'
+> & {
+  technicians:
+    | Pick<Tables<'technicians'>, 'full_name'>
+    | Pick<Tables<'technicians'>, 'full_name'>[]
+    | null;
+};
+
+function getRelatedName(
+  relation:
+    | Pick<Tables<'technicians'>, 'full_name'>
+    | Pick<Tables<'technicians'>, 'full_name'>[]
+    | null
+): string | undefined {
+  if (!relation) return undefined;
+  return Array.isArray(relation) ? relation[0]?.full_name : relation.full_name;
+}
+
+function toStatusLabel(status: Tables<'tickets'>['status']): Ticket['status'] {
+  if (status === 'taken') return 'In Progress';
+  if (status === 'closed') return 'Closed';
+  return 'Open';
+}
+
+function toUrgencyLabel(urgency: string): Ticket['urgency'] {
+  const normalized = urgency.toLowerCase();
+  if (normalized === 'low') return 'Low';
+  if (normalized === 'high') return 'High';
+  if (normalized === 'critical') return 'Critical';
+  return 'Medium';
+}
+
 // Mock tickets removed in favor of Supabase data
 
 export default function UserDashboard() {
@@ -35,19 +71,52 @@ export default function UserDashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isUser, setIsUser] = useState(false);
+  const [isUser, setIsUser] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const userAuth = localStorage.getItem('isUser');
-    if (!userAuth) {
-      router.push('/login');
-    } else {
-      setIsUser(true);
-      fetchTickets();
-    }
+    const checkEmployeeAccess = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setIsUser(false);
+        router.replace('/login');
+        return;
+      }
+
+      try {
+        const role = await ensureUserRole(supabase, user);
+        if (role !== 'employee') {
+          setIsUser(false);
+          router.replace('/login');
+          return;
+        }
+
+        setIsUser(true);
+        fetchTickets(user.id);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? encodeURIComponent(error.message)
+            : 'Unable%20to%20resolve%20user%20role';
+        setIsUser(false);
+        router.replace(`/login?error=${message}`);
+      }
+    };
+
+    checkEmployeeAccess();
   }, [router]);
 
-  const fetchTickets = async () => {
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (!error) {
+      router.push('/login');
+    }
+  };
+
+  const fetchTickets = async (employeeId: string) => {
     const { data, error } = await supabase
       .from('tickets')
       .select(`
@@ -61,36 +130,27 @@ export default function UserDashboard() {
         created_at,
         technicians ( full_name )
       `)
+      .eq('employee_id', employeeId)
       .order('created_at', { ascending: false });
 
     if (data && !error) {
+      const rows = data as TicketRow[];
       setTickets(
-        data.map((t: any) => {
-          let statusText = 'Open';
-          if (t.status === 'taken') statusText = 'In Progress';
-          if (t.status === 'closed') statusText = 'Closed';
-
+        rows.map((t) => {
           return {
             id: t.id,
             short_id: t.short_id || t.id.substring(0, 8),
             title: t.title,
             description: t.description,
             category: t.category,
-            urgency: t.urgency,
-            status: statusText as any,
-            submittedAt: new Date(t.created_at).toLocaleString(),
-            assignedTo: t.technicians?.full_name,
+            urgency: toUrgencyLabel(t.urgency),
+            status: toStatusLabel(t.status),
+            submittedAt: t.created_at ? new Date(t.created_at).toLocaleString() : '-',
+            assignedTo: getRelatedName(t.technicians),
           };
         })
       );
     }
-  };
-
-  if (!isUser) return null;
-
-  const handleLogout = () => {
-    localStorage.removeItem('isUser');
-    router.push('/login');
   };
 
   const urgencyVariants: Record<string, "outline" | "default" | "secondary" | "destructive"> = {
@@ -119,6 +179,8 @@ export default function UserDashboard() {
     inProgress: tickets.filter(t => t.status === 'In Progress').length,
     resolved: tickets.filter(t => t.status === 'Resolved').length,
   };
+
+  if (isUser !== true) return null;
 
   return (
     <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">

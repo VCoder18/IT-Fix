@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import type { Tables } from '@/lib/database';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -19,20 +20,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 
 import { Suspense } from 'react';
 
-const technicians: Record<string, string> = {
-  '1': 'Sarah Johnson',
-  '2': 'Michael Chen',
-  '3': 'Emily Rodriguez',
-  '4': 'David Kim',
-  '5': 'Jessica Taylor',
-  '6': 'Robert Anderson',
-};
-
 function SubmitTicketContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const technicianId = searchParams.get('technician');
-  const technicianName = technicianId ? technicians[technicianId] : null;
+  const [technicianName, setTechnicianName] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -44,6 +36,29 @@ function SubmitTicketContent() {
   });
   const [submitted, setSubmitted] = useState(false);
 
+  useEffect(() => {
+    const fetchSelectedTechnician = async () => {
+      if (!technicianId) {
+        setTechnicianName(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('technicians')
+        .select('full_name')
+        .eq('id', technicianId)
+        .single();
+
+      if (!error && data) {
+        setTechnicianName((data as Pick<Tables<'technicians'>, 'full_name'>).full_name);
+      } else {
+        setTechnicianName(null);
+      }
+    };
+
+    fetchSelectedTechnician();
+  }, [technicianId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
@@ -54,7 +69,8 @@ function SubmitTicketContent() {
       description: formData.description,
       category: formData.category,
       urgency: formData.urgency,
-      status: 'pending'
+      status: 'pending',
+      technician_id: technicianId
     }).select().single();
 
     if (error) {

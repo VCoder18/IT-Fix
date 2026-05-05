@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { ensureUserRole } from '@/lib/auth/ensure-user-role';
+import type { Tables } from '@/lib/database';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -27,6 +29,40 @@ type Ticket = {
   submittedAt: string;
 };
 
+type TicketRow = Pick<
+  Tables<'tickets'>,
+  'id' | 'short_id' | 'title' | 'category' | 'urgency' | 'status' | 'created_at'
+> & {
+  employees:
+    | Pick<Tables<'employees'>, 'full_name'>
+    | Pick<Tables<'employees'>, 'full_name'>[]
+    | null;
+};
+
+function getSubmittedBy(
+  relation:
+    | Pick<Tables<'employees'>, 'full_name'>
+    | Pick<Tables<'employees'>, 'full_name'>[]
+    | null
+): string {
+  if (!relation) return 'Unknown';
+  return Array.isArray(relation) ? (relation[0]?.full_name ?? 'Unknown') : relation.full_name;
+}
+
+function toStatusLabel(status: Tables<'tickets'>['status']): Ticket['status'] {
+  if (status === 'taken') return 'In Progress';
+  if (status === 'closed') return 'Closed';
+  return 'Open';
+}
+
+function toUrgencyLabel(urgency: string): Ticket['urgency'] {
+  const normalized = urgency.toLowerCase();
+  if (normalized === 'low') return 'Low';
+  if (normalized === 'high') return 'High';
+  if (normalized === 'critical') return 'Critical';
+  return 'Medium';
+}
+
 // Mock tickets removed in favor of Supabase data
 
 export default function AdminDashboard() {
@@ -34,17 +70,50 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const adminAuth = localStorage.getItem('isAdmin');
-    if (!adminAuth) {
-      router.push('/login');
-    } else {
-      setIsAdmin(true);
-      fetchTickets();
-    }
+    const checkAdminAccess = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setIsAdmin(false);
+        router.replace('/login');
+        return;
+      }
+
+      try {
+        const role = await ensureUserRole(supabase, user);
+        if (role !== 'technician') {
+          setIsAdmin(false);
+          router.replace('/login');
+          return;
+        }
+
+        setIsAdmin(true);
+        fetchTickets();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? encodeURIComponent(error.message)
+            : 'Unable%20to%20resolve%20user%20role';
+        setIsAdmin(false);
+        router.replace(`/login?error=${message}`);
+      }
+    };
+
+    checkAdminAccess();
   }, [router]);
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (!error) {
+      router.push('/login');
+    }
+  };
 
   const fetchTickets = async () => {
     const { data, error } = await supabase
@@ -62,32 +131,22 @@ export default function AdminDashboard() {
       .order('created_at', { ascending: false });
 
     if (data && !error) {
+      const rows = data as TicketRow[];
       setTickets(
-        data.map((t: any) => {
-          let statusText = 'Open';
-          if (t.status === 'taken') statusText = 'In Progress';
-          if (t.status === 'closed') statusText = 'Closed';
-
+        rows.map((t) => {
           return {
             id: t.id,
             short_id: t.short_id || t.id.substring(0, 8),
             title: t.title,
             category: t.category,
-            urgency: t.urgency,
-            status: statusText as any,
-            submittedBy: t.employees?.full_name || 'Unknown',
-            submittedAt: new Date(t.created_at).toLocaleString(),
+            urgency: toUrgencyLabel(t.urgency),
+            status: toStatusLabel(t.status),
+            submittedBy: getSubmittedBy(t.employees),
+            submittedAt: t.created_at ? new Date(t.created_at).toLocaleString() : '-',
           };
         })
       );
     }
-  };
-
-  if (!isAdmin) return null;
-
-  const handleLogout = () => {
-    localStorage.removeItem('isAdmin');
-    router.push('/login');
   };
 
   const urgencyVariants: Record<string, "outline" | "default" | "secondary" | "destructive"> = {
@@ -116,6 +175,8 @@ export default function AdminDashboard() {
     inProgress: tickets.filter(t => t.status === 'In Progress').length,
     resolved: tickets.filter(t => t.status === 'Resolved').length,
   };
+
+  if (isAdmin !== true) return null;
 
   return (
     <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">

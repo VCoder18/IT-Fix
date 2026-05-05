@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { ensureUserRole } from '@/lib/auth/ensure-user-role';
+import type { Tables } from '@/lib/database';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -19,75 +22,134 @@ import { Label } from '@/components/ui/label';
 type Comment = {
   id: string;
   author: string;
-  role: 'user' | 'admin';
+  role: 'employee' | 'technician';
   message: string;
   timestamp: string;
 };
 
+type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+
+type TicketRow = Tables<'tickets'> & {
+  employees:
+    | Pick<Tables<'employees'>, 'full_name' | 'email'>
+    | Pick<Tables<'employees'>, 'full_name' | 'email'>[]
+    | null;
+};
+
+function getEmployee(
+  relation: TicketRow['employees']
+): Pick<Tables<'employees'>, 'full_name' | 'email'> | null {
+  if (!relation) return null;
+  return Array.isArray(relation) ? (relation[0] ?? null) : relation;
+}
+
+function toStatusLabel(status: Tables<'tickets'>['status']): TicketStatus {
+  if (status === 'taken') return 'In Progress';
+  if (status === 'closed') return 'Closed';
+  return 'Open';
+}
+
+function toTicketState(status: TicketStatus): Tables<'tickets'>['status'] {
+  if (status === 'In Progress') return 'taken';
+  if (status === 'Closed' || status === 'Resolved') return 'closed';
+  return 'pending';
+}
+
+function isTicketStatus(value: string): value is TicketStatus {
+  return value === 'Open' || value === 'In Progress' || value === 'Resolved' || value === 'Closed';
+}
+
 export default function TicketDetails() {
   const { ticketId } = useParams();
   const router = useRouter();
-  const [ticket, setTicket] = useState<any>(null);
-  const [status, setStatus] = useState<'Open' | 'In Progress' | 'Resolved' | 'Closed'>('Open');
+  const [ticket, setTicket] = useState<TicketRow | null>(null);
+  const [status, setStatus] = useState<TicketStatus>('Open');
   const [newComment, setNewComment] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const safeTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
 
   useEffect(() => {
-    const adminAuth = localStorage.getItem('isAdmin');
-    if (!adminAuth) {
-      router.push('/login');
-    } else {
-      setIsAdmin(true);
-      fetchTicket();
-    }
+    const checkAdminAccess = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setIsAdmin(false);
+        router.replace('/login');
+        return;
+      }
+
+      try {
+        const role = await ensureUserRole(supabase, user);
+        if (role !== 'technician') {
+          setIsAdmin(false);
+          router.replace('/login');
+          return;
+        }
+
+        setCurrentUserId(user.id);
+        setIsAdmin(true);
+        fetchTicket();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? encodeURIComponent(error.message)
+            : 'Unable%20to%20resolve%20user%20role';
+        setIsAdmin(false);
+        router.replace(`/login?error=${message}`);
+      }
+    };
+
+    checkAdminAccess();
   }, [router, ticketId]);
 
   const fetchTicket = async () => {
     const { data: ticketData } = await supabase
       .from('tickets')
       .select('*, employees(full_name, email)')
-      .eq('id', ticketId)
+      .eq('id', safeTicketId)
       .single();
 
     if (ticketData) {
-      setTicket(ticketData);
-      let statusText = 'Open';
-      if (ticketData.status === 'taken') statusText = 'In Progress';
-      if (ticketData.status === 'closed') statusText = 'Closed';
-      setStatus(statusText as any);
+      const typedTicket = ticketData as TicketRow;
+      setTicket(typedTicket);
+      setStatus(toStatusLabel(typedTicket.status));
     }
 
     const { data: commentsData } = await supabase
       .from('ticket_comments')
       .select('*')
-      .eq('ticket_id', ticketId)
+      .eq('ticket_id', safeTicketId)
       .order('created_at', { ascending: true });
 
     if (commentsData) {
       setComments(commentsData.map(c => ({
         id: c.id,
         author: c.author_role === 'technician' ? 'IT Support' : 'User',
-        role: c.author_role as any,
+        role: c.author_role === 'technician' ? 'technician' : 'employee',
         message: c.message,
-        timestamp: new Date(c.created_at).toLocaleString(),
+        timestamp: c.created_at ? new Date(c.created_at).toLocaleString() : '-',
       })));
     }
   };
 
   const handleStatusChange = async (value: string) => {
-    setStatus(value as any);
-    const mappedStatus = value === 'Open' ? 'pending' : value === 'In Progress' ? 'taken' : 'closed';
-    await supabase.from('tickets').update({ status: mappedStatus }).eq('id', ticketId);
+    if (!isTicketStatus(value)) return;
+    setStatus(value);
+    const mappedStatus = toTicketState(value);
+    await supabase.from('tickets').update({ status: mappedStatus }).eq('id', safeTicketId);
   };
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newComment.trim()) {
-      const dummyAdminId = '00000000-0000-0000-0000-000000000000';
+    if (newComment.trim() && currentUserId) {
       const { data } = await supabase.from('ticket_comments').insert({
-        ticket_id: ticketId,
-        author_id: dummyAdminId,
+        ticket_id: safeTicketId,
+        author_id: currentUserId,
         author_role: 'technician',
         message: newComment
       }).select().single();
@@ -98,7 +160,7 @@ export default function TicketDetails() {
           author: 'IT Support',
           role: 'technician',
           message: data.message,
-          timestamp: new Date(data.created_at).toLocaleString(),
+          timestamp: data.created_at ? new Date(data.created_at).toLocaleString() : '-',
         }]);
         setNewComment('');
       }
@@ -114,6 +176,7 @@ export default function TicketDetails() {
 
   if (!isAdmin) return null;
   if (!ticket) return <div className="p-8 text-center text-white">Loading ticket...</div>;
+  const employee = getEmployee(ticket.employees);
 
   return (
     <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
@@ -161,11 +224,11 @@ export default function TicketDetails() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-border">
             <div>
               <div className="text-sm text-gray-400 mb-1">Submitted By</div>
-              <div className="text-foreground font-medium">{ticket.employees?.full_name || 'Unknown User'}</div>
+               <div className="text-foreground font-medium">{employee?.full_name || 'Unknown User'}</div>
             </div>
             <div>
               <div className="text-sm text-gray-400 mb-1">Email</div>
-              <div className="text-foreground font-medium">{ticket.employees?.email || '-'}</div>
+               <div className="text-foreground font-medium">{employee?.email || '-'}</div>
             </div>
             <div>
               <div className="text-sm text-gray-400 mb-1">Category</div>
@@ -214,13 +277,13 @@ export default function TicketDetails() {
               <div
                 key={comment.id}
                 className={`p-4 rounded-lg border ${
-                  comment.role === 'admin' ? 'bg-blue-900/30 border-blue-700' : 'bg-slate-700/50 border-slate-700'
+                  comment.role === 'technician' ? 'bg-blue-900/30 border-blue-700' : 'bg-slate-700/50 border-slate-700'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-white">{comment.author}</span>
-                    {comment.role === 'admin' && (
+                    {comment.role === 'technician' && (
                       <Badge variant="default" className="h-5 px-1.5 text-[10px] bg-blue-600">
                         Admin
                       </Badge>
