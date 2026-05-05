@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { ensureUserRole } from '@/lib/auth/ensure-user-role';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -35,17 +36,52 @@ export default function UserDashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isUser, setIsUser] = useState(false);
+  const [isUser, setIsUser] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const userAuth = localStorage.getItem('isUser');
-    if (!userAuth) {
-      router.push('/login');
-    } else {
-      setIsUser(true);
-      fetchTickets();
-    }
+    const checkEmployeeAccess = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setIsUser(false);
+        router.replace('/login');
+        return;
+      }
+
+      try {
+        const role = await ensureUserRole(supabase, user);
+        if (role !== 'employee') {
+          setIsUser(false);
+          router.replace('/login');
+          return;
+        }
+
+        setIsUser(true);
+        fetchTickets();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? encodeURIComponent(error.message)
+            : 'Unable%20to%20resolve%20user%20role';
+        setIsUser(false);
+        router.replace(`/login?error=${message}`);
+      }
+    };
+
+    checkEmployeeAccess();
   }, [router]);
+
+  if (isUser !== true) return null;
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (!error) {
+      router.push('/login');
+    }
+  };
 
   const fetchTickets = async () => {
     const { data, error } = await supabase
@@ -84,13 +120,6 @@ export default function UserDashboard() {
         })
       );
     }
-  };
-
-  if (!isUser) return null;
-
-  const handleLogout = () => {
-    localStorage.removeItem('isUser');
-    router.push('/login');
   };
 
   const urgencyVariants: Record<string, "outline" | "default" | "secondary" | "destructive"> = {

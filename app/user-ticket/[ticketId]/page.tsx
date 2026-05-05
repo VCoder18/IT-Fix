@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { ensureUserRole } from '@/lib/auth/ensure-user-role';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -37,26 +39,55 @@ export default function UserTicketDetails() {
     urgency: '',
   });
   const [newComment, setNewComment] = useState('');
-  const [isUser, setIsUser] = useState(false);
+  const [isUser, setIsUser] = useState<boolean | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [status, setStatus] = useState('Open');
+  const safeTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
 
   useEffect(() => {
-    const userAuth = localStorage.getItem('isUser');
-    if (!userAuth) {
-      router.push('/login');
-    } else {
-      setIsUser(true);
-      fetchTicket();
-    }
+    const checkUserAccess = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setIsUser(false);
+        router.replace('/login');
+        return;
+      }
+
+      try {
+        const role = await ensureUserRole(supabase, user);
+        if (role !== 'employee') {
+          setIsUser(false);
+          router.replace('/login');
+          return;
+        }
+
+        setCurrentUserId(user.id);
+        setIsUser(true);
+        fetchTicket();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? encodeURIComponent(error.message)
+            : 'Unable%20to%20resolve%20user%20role';
+        setIsUser(false);
+        router.replace(`/login?error=${message}`);
+      }
+    };
+
+    checkUserAccess();
   }, [router, ticketId]);
 
   const fetchTicket = async () => {
     const { data: ticketData } = await supabase
       .from('tickets')
       .select('*, technicians(full_name)')
-      .eq('id', ticketId)
+      .eq('id', safeTicketId)
       .single();
 
     if (ticketData) {
@@ -76,7 +107,7 @@ export default function UserTicketDetails() {
     const { data: commentsData } = await supabase
       .from('ticket_comments')
       .select('*')
-      .eq('ticket_id', ticketId)
+      .eq('ticket_id', safeTicketId)
       .order('created_at', { ascending: true });
 
     if (commentsData) {
@@ -92,11 +123,10 @@ export default function UserTicketDetails() {
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newComment.trim()) {
-      const dummyUserId = '00000000-0000-0000-0000-000000000000';
+    if (newComment.trim() && currentUserId) {
       const { data } = await supabase.from('ticket_comments').insert({
-        ticket_id: ticketId,
-        author_id: dummyUserId,
+        ticket_id: safeTicketId,
+        author_id: currentUserId,
         author_role: 'employee',
         message: newComment
       }).select().single();
@@ -121,7 +151,7 @@ export default function UserTicketDetails() {
       description: formData.description,
       category: formData.category,
       urgency: formData.urgency,
-    }).eq('id', ticketId);
+    }).eq('id', safeTicketId);
     
     setTicket({ ...ticket, ...formData });
   };
@@ -133,7 +163,7 @@ export default function UserTicketDetails() {
     Critical: "destructive",
   };
 
-  if (!isUser) return null;
+  if (isUser !== true) return null;
   if (!ticket) return <div className="p-8 text-center text-white">Loading ticket...</div>;
   const statusColors: Record<string, string> = {
     Open: 'bg-gray-500',

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { ensureUserRole } from '@/lib/auth/ensure-user-role';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -34,17 +35,52 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const adminAuth = localStorage.getItem('isAdmin');
-    if (!adminAuth) {
-      router.push('/login');
-    } else {
-      setIsAdmin(true);
-      fetchTickets();
-    }
+    const checkAdminAccess = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setIsAdmin(false);
+        router.replace('/login');
+        return;
+      }
+
+      try {
+        const role = await ensureUserRole(supabase, user);
+        if (role !== 'technician') {
+          setIsAdmin(false);
+          router.replace('/login');
+          return;
+        }
+
+        setIsAdmin(true);
+        fetchTickets();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? encodeURIComponent(error.message)
+            : 'Unable%20to%20resolve%20user%20role';
+        setIsAdmin(false);
+        router.replace(`/login?error=${message}`);
+      }
+    };
+
+    checkAdminAccess();
   }, [router]);
+
+  if (isAdmin !== true) return null;
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (!error) {
+      router.push('/login');
+    }
+  };
 
   const fetchTickets = async () => {
     const { data, error } = await supabase
@@ -81,13 +117,6 @@ export default function AdminDashboard() {
         })
       );
     }
-  };
-
-  if (!isAdmin) return null;
-
-  const handleLogout = () => {
-    localStorage.removeItem('isAdmin');
-    router.push('/login');
   };
 
   const urgencyVariants: Record<string, "outline" | "default" | "secondary" | "destructive"> = {
