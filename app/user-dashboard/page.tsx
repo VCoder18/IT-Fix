@@ -181,7 +181,7 @@ export default function UserDashboard() {
       .delete()
       .eq('id', ticket.id)
       .eq('employee_id', currentUserId)
-      .select('id');
+      .select('id, image_url');
 
     if (deleteError) {
       const details = [deleteError.message, deleteError.details, deleteError.hint].filter(Boolean).join('\n');
@@ -206,10 +206,11 @@ export default function UserDashboard() {
 
     setTickets((current) => current.filter((t) => t.id !== ticket.id));
 
-    if (ticket.imageUrl) {
+    const deletedImagePath = deletedRows[0]?.image_url ?? ticket.imageUrl;
+    if (deletedImagePath) {
       const { error: storageError } = await supabase.storage
         .from('ticket-images')
-        .remove([ticket.imageUrl]);
+        .remove([deletedImagePath]);
 
       if (storageError) {
         await Swal.fire({

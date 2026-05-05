@@ -245,12 +245,13 @@ export default function UserTicketDetails() {
 
       const fileExt = imageFile.name.split('.').pop()?.toLowerCase() || 'png';
       const safeExt = ['png', 'jpeg', 'jpg', 'webp'].includes(fileExt) ? fileExt : 'png';
-      const uploadPath = `${currentUserId}/${Date.now()}.${safeExt}`;
+      const uploadPath = previousImagePath ?? `${currentUserId}/${Date.now()}.${safeExt}`;
+      const shouldUpsert = Boolean(previousImagePath);
 
       const { error: uploadError } = await supabase.storage
         .from('ticket-images')
         .upload(uploadPath, imageFile, {
-          upsert: false,
+          upsert: shouldUpsert,
           contentType: imageFile.type,
         });
 
@@ -291,7 +292,14 @@ export default function UserTicketDetails() {
     }
 
     if (imageFile && previousImagePath && previousImagePath !== nextImagePath) {
-      await supabase.storage.from('ticket-images').remove([previousImagePath]);
+      const { error: removeError } = await supabase.storage.from('ticket-images').remove([previousImagePath]);
+      if (removeError) {
+        await Swal.fire({
+          icon: 'warning',
+          title: 'Old image cleanup failed',
+          text: removeError.message,
+        });
+      }
     }
 
     const updatedTicket = data as TicketRow;

@@ -38,6 +38,7 @@ function SubmitTicketContent() {
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [formData, setFormData] = useState<TicketFormValues>({
     title: '',
     description: '',
@@ -100,6 +101,18 @@ function SubmitTicketContent() {
 
     setupPage();
   }, [preferredTechnicianId, router]);
+
+  useEffect(() => {
+    if (!imageFile) {
+      setImagePreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(imageFile);
+    setImagePreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [imageFile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -316,6 +329,13 @@ function SubmitTicketContent() {
               <p className="text-xs text-muted-foreground">
                 PNG, JPEG, JPG, or WEBP up to 10MB.
               </p>
+              {imagePreviewUrl && (
+                <img
+                  src={imagePreviewUrl}
+                  alt="Selected image preview"
+                  className="mt-2 max-h-72 rounded-lg border border-border bg-muted/20 object-contain"
+                />
+              )}
             </div>
 
             <Button
