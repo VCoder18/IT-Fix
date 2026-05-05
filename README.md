@@ -1,27 +1,52 @@
-# IT-Fix - IT Support Extranet 🎓
+# IT-Fix 🛠️ — IT Support Ticket Portal
 
-**Student Project — Architecture & Infrastructure Analysis**
+> **End-of-Module Project — Cloud Architecture & Vibe Programming**  
+> Stack: Next.js · Supabase · Vercel
 
-## 1. Theme Mapping
-To facilitate the correction and review of our database and storage setup, here is the mapping of the data model used for the IT-Fix application:
+---
 
-* **Table A (Employees):** `public.employees` - Employees can consult a technician by assignning him a ticket based on the issue's category.
-* **Table B (Resources):** `public.technicians` - Technicians can be consulted and assigned to incoming IT tickets.
-* **Table C (Interactions):** `public.tickets` - The main relational table linking employees and technicians, complete with creation dates, updates, and current status (*Closed*, *In Progress*, *Open*).
-* **Storage (Files):** `ticket-images` - The storage bucket linked to tickets, which stores bug/issue screenshots.
+## Theme Mapping
 
-## 2. Architecture Analysis
+IT-Fix is an internal IT support portal where company employees can report technical issues and track their repair tickets.
 
-### A. Financial Analysis: OPEX vs. CAPEX
-Using a serverless-oriented architecture (Vercel and Supabase) is financially more logical and appropriate for launching a student project compared to using a traditional physical server:
-* **CAPEX (Capital Expenditures):** A conventional server requires significant upfront costs (purchasing hardware, network switches, backup equipment). With Supabase and Vercel, the initial hardware investment is **$0**, as the free startup tiers allow us to prototype quickly without acquisition costs.
-* **OPEX (Operational Expenditures):** Unlike traditional hosting where you pay for a fixed capacity 24/7 (even during periods of low activity or at night), cloud solutions charge based on actual usage (*Serverless*). Costs scale linearly with traffic without incurring heavy maintenance or hardware costs.
+| Element | IT-Fix |
+|---|---|
+| **Table A — Users** | **Employees** — they register and log in using their @estin.dz email. Managed through Supabase Auth. |
+| **Table B — Resources** | **Technicians** — the IT staff members available to handle issues. Employees can browse them when opening a ticket. |
+| **Table C — Interactions** | **Tickets** — each ticket links an employee (A) to a technician (B), and includes a title, description, status (Open / In Progress / Closed), and creation date. |
+| **File (Storage)** | **Bug screenshot** — an image the employee uploads when creating a ticket, stored in Supabase Storage. |
 
-### B. Scalability: Vercel vs. Physical Data Center
-Vercel's approach to scalability differs radically from managing a physical data center:
-* **Local and physical infrastructure:** In a physical data center, accommodating a traffic spike requires additional rack servers and anticipating technical constraints (power consumption, cooling, physical space).
-* **Vercel Scalability (Edge & Serverless):** Vercel automatically deploys the frontend to a global Edge network. When there is an influx of users, the platform dynamically allocates computing resources without requiring hardware intervention, ensuring high availability and seamless fault tolerance.
+**User flow:** Log in with @estin.dz → Browse available technicians → Open a ticket with a screenshot → Track ticket status from the personal dashboard.
 
-### C. Structured and Unstructured Data
-* **Structured Data:** The relational data stored in the PostgreSQL database tables (tables `profiles`, `technicians`, `tickets`, and `ticket_comments`), organized into rows and columns according to a strict, typed schema.
-* **Unstructured Data:** The binary files and documents (screenshots, bug images, and PDF files) hosted in the Storage bucket. These data lack a fixed schema and are managed as objects identified by their URLs.
+---
+
+## Architecture Analysis
+
+### Why Vercel + Supabase makes more financial sense than a physical server
+
+Setting up a traditional server means buying the hardware upfront — the server itself, the rack, network equipment, a UPS for power backup, cooling systems, and so on. That's a **capital expense (CAPEX)**: a large one-time investment that locks you into a fixed capacity whether you use it or not.
+
+With IT-Fix, there's none of that. Supabase hosts the database and file storage, Vercel hosts and deploys the frontend. Both platforms work on a pay-as-you-go model — you only pay for actual usage. That's an **operational expense (OPEX)**: no upfront cost, no wasted capacity, and no hardware to maintain. For a project at this stage, the OPEX model is simply the smarter choice.
+
+---
+
+### How Vercel handles scalability compared to a physical data center
+
+A physical data center has hard limits. If traffic spikes, you either bought more hardware than you need most of the time, or you scramble to add capacity under pressure — installing new servers in racks, reconfiguring the network, making sure the cooling keeps up. It's slow and expensive.
+
+This is where the **Serverless** model changes everything. Vercel runs the app as serverless functions: small isolated units that spin up on demand and disappear after the request is handled. If 50 employees submit tickets at the same time, 50 functions run in parallel automatically — no bottleneck, no manual intervention. There's no physical infrastructure to manage, no cooling bill, and no single point of failure tied to one rack in one room.
+
+---
+
+### Structured vs. Unstructured data in IT-Fix
+
+**Structured data** is everything stored in Supabase PostgreSQL: employees, technicians, tickets_comments, and the tickets table with all its fields (title, description, status, creation date). It has a fixed schema, it's queryable with SQL, and it's protected by Row Level Security so each employee only sees their own tickets.
+
+**Unstructured data** is the bug screenshots. These are image files — PNG or JPEG — that don't fit into a relational table. They're stored in Supabase Storage, which handles binary content separately. Each file gets a URL that's saved in the tickets table as a reference, keeping both types of data linked without mixing them.
+
+---
+
+## Deployment
+
+- **Live app:** `https://it-fix.vercel.app` *(replace with your URL)*
+- **GitHub repo:** `https://github.com/your-username/it-fix` *(replace with your link)*
