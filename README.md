@@ -48,5 +48,5 @@ This is where the **Serverless** model changes everything. Vercel runs the app a
 
 ## Deployment
 
-- **Live app:** `https://it-fix.vercel.app` *(replace with your URL)*
-- **GitHub repo:** `https://github.com/your-username/it-fix` *(replace with your link)*
+- **Live app:** `https://it-fix-estin.vercel.app`
+- **GitHub repo:** `https://github.com/VCoder18/IT-Fix`
