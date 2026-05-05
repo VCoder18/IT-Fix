@@ -1,29 +1,31 @@
-IT-Fix - IT Support Extranet
-1. Theme Mapping
-Table A (Users): profiles – Managed via Supabase Auth (Company employees).
+# IT-Fix - IT Support Extranet 🎓
 
-Table B (Resources): technicians – The support technicians who can be consulted and assigned to tickets.
+**Student Project — Architecture & Infrastructure Analysis**
 
-Table C (Interactions): tickets – The junction table linking employees and technicians with a date and a status (Pending, In Progress, Resolved).
+---
 
-Storage (Files): ticket-attachments – The storage bucket linked to the ticket, holding bug screenshots or supporting documents (images or PDFs).
+## 1. Theme Mapping
+To facilitate the correction and review of our database and storage setup, here is the mapping of the data model used for the IT-Fix application:
 
-2. Architecture Analysis
-A. Financial Analysis: OPEX vs. CAPEX
-Using a serverless-oriented architecture (Vercel and Supabase) is financially much more logical and appropriate for launching this project compared to a traditional physical server:
+* **Table A (Users):** `profiles` – Managed via Supabase Auth (Stores the company employees and internal staff accounts).
+* **Table B (Resources):** `technicians` – The support technicians that can be consulted and assigned to incoming IT tickets.
+* **Table C (Interactions):** `tickets` – The main relational table linking employees and technicians, complete with creation dates, updates, and current status (*Closed*, *In Progress*, *Open*).
+* **Storage (Files):** `ticket-attachments` – The storage bucket linked to tickets, which holds bug screenshots or supporting PDF documents.
 
-CAPEX (Capital Expenditures): A conventional server requires significant upfront costs (purchasing hardware, network switches, backup equipment). With Supabase and Vercel, the initial hardware investment is $0, as the free startup tiers allow you to prototype quickly without acquisition costs.
+---
 
-OPEX (Operational Expenditures): Unlike traditional hosting where you pay for fixed capacity (even during periods of low activity), cloud solutions charge based on actual usage (Serverless). Costs scale linearly with traffic without incurring human or hardware maintenance costs.
+## 2. Architecture Analysis
 
-B. Scalability: Vercel vs. Physical Data Center
-Vercel's approach to scalability differs radically from a physical data center:
+### A. Financial Analysis: OPEX vs. CAPEX
+Using a serverless-oriented architecture (Vercel and Supabase) is financially more logical and appropriate for launching a student project compared to using a traditional physical server:
+* **CAPEX (Capital Expenditures):** A conventional server requires significant upfront costs (purchasing hardware, network switches, backup equipment). With Supabase and Vercel, the initial hardware investment is **$0**, as the free startup tiers allow us to prototype quickly without acquisition costs.
+* **OPEX (Operational Expenditures):** Unlike traditional hosting where you pay for a fixed capacity 24/7 (even during periods of low activity or at night), cloud solutions charge based on actual usage (*Serverless*). Costs scale linearly with traffic without incurring heavy maintenance or hardware costs.
 
-Local and physical infrastructure: In a physical data center, accommodating a traffic spike requires additional rack servers and anticipating technical constraints (power consumption, cooling, physical space).
+### B. Scalability: Vercel vs. Physical Data Center
+Vercel's approach to scalability differs radically from managing a physical data center:
+* **Local and physical infrastructure:** In a physical data center, accommodating a traffic spike requires additional rack servers and anticipating technical constraints (power consumption, cooling, physical space).
+* **Vercel Scalability (Edge & Serverless):** Vercel automatically deploys the frontend to a global Edge network. When there is an influx of users, the platform dynamically allocates computing resources without requiring hardware intervention, ensuring high availability and seamless fault tolerance.
 
-Vercel Scalability (Edge & Serverless): Vercel automatically deploys the frontend to a global Edge network. When there is an influx of users, the platform dynamically allocates computing resources without requiring hardware intervention, ensuring high availability and seamless fault tolerance.
-
-C. Structured and Unstructured Data
-Structured Data: The relational data stored in the PostgreSQL database tables (tables profiles, technicians, tickets, and ticket_comments), organized into rows and columns according to a strict, typed schema.
-
-Unstructured Data: The binary files and documents (screenshots, bug images, and PDF files) hosted in the Storage bucket. These data lack a fixed schema and are managed as objects identified by their URLs.
+### C. Structured and Unstructured Data
+* **Structured Data:** The relational data stored in the PostgreSQL database tables (tables `profiles`, `technicians`, `tickets`, and `ticket_comments`), organized into rows and columns according to a strict, typed schema.
+* **Unstructured Data:** The binary files and documents (screenshots, bug images, and PDF files) hosted in the Storage bucket. These data lack a fixed schema and are managed as objects identified by their URLs.
