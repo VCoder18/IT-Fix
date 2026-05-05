@@ -156,6 +156,10 @@ WITH CHECK (auth.uid() = employee_id);
 CREATE POLICY "Update tickets" ON tickets FOR UPDATE 
 USING (auth.uid() = employee_id OR auth.uid() = technician_id);
 
+-- Employees can delete only their own tickets
+CREATE POLICY "Delete own tickets" ON tickets FOR DELETE
+USING (auth.uid() = employee_id);
+
 -- ------------------------------------------
 -- Ticket Comments Policies
 -- ------------------------------------------

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import Swal from 'sweetalert2';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { ensureUserRole } from '@/lib/auth/ensure-user-role';
@@ -16,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Edit2, Save, X } from 'lucide-react';
@@ -66,6 +67,10 @@ export default function UserTicketDetails() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [status, setStatus] = useState<TicketStatus>('Open');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPostingComment, setIsPostingComment] = useState(false);
   const safeTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
 
   useEffect(() => {
@@ -91,7 +96,7 @@ export default function UserTicketDetails() {
 
         setCurrentUserId(user.id);
         setIsUser(true);
-        fetchTicket();
+        await fetchTicket();
       } catch (error) {
         const message =
           error instanceof Error
@@ -105,7 +110,28 @@ export default function UserTicketDetails() {
     checkUserAccess();
   }, [router, ticketId]);
 
+  useEffect(() => {
+    if (!imageFile) return;
+    const objectUrl = URL.createObjectURL(imageFile);
+    setImagePreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [imageFile]);
+
+  const loadTicketImagePreview = (imagePath: string | null) => {
+    if (!imagePath) {
+      setImagePreviewUrl(null);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from('ticket-images')
+      .getPublicUrl(imagePath);
+    setImagePreviewUrl(data.publicUrl);
+  };
+
   const fetchTicket = async () => {
+    if (!safeTicketId) return;
+
     const { data: ticketData } = await supabase
       .from('tickets')
       .select('*, technicians(full_name)')
@@ -122,6 +148,7 @@ export default function UserTicketDetails() {
         urgency: typedTicket.urgency,
       });
       setStatus(toStatusLabel(typedTicket.status));
+      loadTicketImagePreview(typedTicket.image_url);
     }
 
     const { data: commentsData } = await supabase
@@ -143,37 +170,161 @@ export default function UserTicketDetails() {
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newComment.trim() && currentUserId) {
-      const { data } = await supabase.from('ticket_comments').insert({
-        ticket_id: safeTicketId,
-        author_id: currentUserId,
-        author_role: 'employee',
-        message: newComment
-      }).select().single();
+    if (!newComment.trim() || !currentUserId || !safeTicketId) return;
 
-      if (data) {
-        setComments([...comments, {
-          id: data.id,
-          author: 'You',
-          role: 'user',
-          message: data.message,
-          timestamp: data.created_at ? new Date(data.created_at).toLocaleString() : '-',
-        }]);
-        setNewComment('');
-      }
+    setIsPostingComment(true);
+    const { data, error } = await supabase.from('ticket_comments').insert({
+      ticket_id: safeTicketId,
+      author_id: currentUserId,
+      author_role: 'employee',
+      message: newComment,
+    }).select().single();
+
+    if (error) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Comment failed',
+        text: error.message,
+      });
+      setIsPostingComment(false);
+      return;
     }
+
+    if (data) {
+      setComments([...comments, {
+        id: data.id,
+        author: 'You',
+        role: 'user',
+        message: data.message,
+        timestamp: data.created_at ? new Date(data.created_at).toLocaleString() : '-',
+      }]);
+      setNewComment('');
+    }
+
+    setIsPostingComment(false);
   };
 
   const handleSaveEdit = async () => {
+    if (!ticket || !safeTicketId || !currentUserId) return;
+    if (!formData.title.trim() || !formData.description.trim()) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Missing required fields',
+        text: 'Title and description are required.',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
+    let nextImagePath = ticket.image_url;
+    const previousImagePath = ticket.image_url;
+
+    if (imageFile) {
+      const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+      if (!allowedTypes.includes(imageFile.type)) {
+        await Swal.fire({
+          icon: 'error',
+          title: 'Unsupported image format',
+          text: 'Only PNG, JPEG, JPG, and WEBP images are allowed.',
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      const maxBytes = 10 * 1024 * 1024;
+      if (imageFile.size > maxBytes) {
+        await Swal.fire({
+          icon: 'error',
+          title: 'Image too large',
+          text: 'Image must be 10MB or smaller.',
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      const fileExt = imageFile.name.split('.').pop()?.toLowerCase() || 'png';
+      const safeExt = ['png', 'jpeg', 'jpg', 'webp'].includes(fileExt) ? fileExt : 'png';
+      const uploadPath = `${currentUserId}/${Date.now()}.${safeExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('ticket-images')
+        .upload(uploadPath, imageFile, {
+          upsert: false,
+          contentType: imageFile.type,
+        });
+
+      if (uploadError) {
+        await Swal.fire({
+          icon: 'error',
+          title: 'Image upload failed',
+          text: uploadError.message,
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      nextImagePath = uploadPath;
+    }
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .update({
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        urgency: formData.urgency,
+        image_url: nextImagePath,
+      })
+      .eq('id', safeTicketId)
+      .select('*, technicians(full_name)')
+      .single();
+
+    if (error) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Ticket update failed',
+        text: error.message,
+      });
+      setIsSaving(false);
+      return;
+    }
+
+    if (imageFile && previousImagePath && previousImagePath !== nextImagePath) {
+      await supabase.storage.from('ticket-images').remove([previousImagePath]);
+    }
+
+    const updatedTicket = data as TicketRow;
+    setTicket(updatedTicket);
+    setFormData({
+      title: updatedTicket.title,
+      description: updatedTicket.description,
+      category: updatedTicket.category,
+      urgency: updatedTicket.urgency,
+    });
+    setStatus(toStatusLabel(updatedTicket.status));
+    setImageFile(null);
+    loadTicketImagePreview(updatedTicket.image_url);
     setIsEditing(false);
-    await supabase.from('tickets').update({
-      title: formData.title,
-      description: formData.description,
-      category: formData.category,
-      urgency: formData.urgency,
-    }).eq('id', safeTicketId);
-    
-    setTicket({ ...ticket, ...formData });
+    setIsSaving(false);
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'Ticket updated',
+    });
+  };
+
+  const handleCancelEdit = async () => {
+    if (!ticket) return;
+    setFormData({
+      title: ticket.title,
+      description: ticket.description,
+      category: ticket.category,
+      urgency: ticket.urgency,
+    });
+    setImageFile(null);
+    loadTicketImagePreview(ticket.image_url);
+    setIsEditing(false);
   };
 
   const urgencyVariants: Record<string, "outline" | "default" | "secondary" | "destructive"> = {
@@ -241,7 +392,7 @@ export default function UserTicketDetails() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-border">
             <div>
               <Label className="text-xs text-gray-400 mb-1 block uppercase tracking-wider">Assigned To</Label>
-               <div className="text-foreground font-medium">{getTechnicianName(ticket.technicians)}</div>
+              <div className="text-foreground font-medium">{getTechnicianName(ticket.technicians)}</div>
             </div>
             <div>
               <Label className="text-xs text-gray-400 mb-1 block uppercase tracking-wider">Submitted At</Label>
@@ -296,7 +447,7 @@ export default function UserTicketDetails() {
           <div className="mb-6">
             <Label className="text-xs text-gray-400 mb-2 block uppercase tracking-wider">Description</Label>
             {!isEditing ? (
-              <div className="text-muted-foreground bg-muted/20 p-4 rounded-lg border border-border leading-relaxed">
+              <div className="text-muted-foreground bg-muted/20 p-4 rounded-lg border border-border leading-relaxed whitespace-pre-wrap">
                 {formData.description}
               </div>
             ) : (
@@ -309,17 +460,43 @@ export default function UserTicketDetails() {
             )}
           </div>
 
+          <div className="mb-6">
+            <Label className="text-xs text-gray-400 mb-2 block uppercase tracking-wider">Image</Label>
+            {imagePreviewUrl ? (
+              <img
+                src={imagePreviewUrl}
+                alt="Ticket attachment preview"
+                className="max-h-72 rounded-lg border border-border bg-muted/20 object-contain"
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground">No image attached.</div>
+            )}
+            {isEditing && (
+              <div className="mt-3 space-y-2">
+                <Input
+                  type="file"
+                  accept=".png,.jpeg,.jpg,.webp,image/png,image/jpeg,image/webp"
+                  onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                  className="bg-slate-700 border-slate-600 text-white file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-3 file:py-1.5 file:mr-3"
+                />
+                <p className="text-xs text-muted-foreground">PNG, JPEG, JPG, or WEBP up to 10MB.</p>
+              </div>
+            )}
+          </div>
+
           {isEditing && (
             <div className="flex gap-3">
               <Button
                 onClick={handleSaveEdit}
+                disabled={isSaving}
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
-                <Save className="w-4 h-4 mr-2" /> Save Changes
+                <Save className="w-4 h-4 mr-2" /> {isSaving ? 'Saving...' : 'Save Changes'}
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setIsEditing(false)}
+                onClick={handleCancelEdit}
+                disabled={isSaving}
                 className="border-slate-600 text-gray-300 hover:bg-slate-700"
               >
                 <X className="w-4 h-4 mr-2" /> Cancel
@@ -372,9 +549,10 @@ export default function UserTicketDetails() {
             </div>
             <Button
               type="submit"
+              disabled={isPostingComment}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
-              Add Comment
+              {isPostingComment ? 'Adding...' : 'Add Comment'}
             </Button>
           </form>
         </CardContent>

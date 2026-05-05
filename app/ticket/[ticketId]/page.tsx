@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import Swal from 'sweetalert2';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { ensureUserRole } from '@/lib/auth/ensure-user-role';
@@ -68,6 +69,9 @@ export default function TicketDetails() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const safeTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
 
   useEffect(() => {
@@ -108,6 +112,8 @@ export default function TicketDetails() {
   }, [router, ticketId]);
 
   const fetchTicket = async () => {
+    if (!safeTicketId) return;
+
     const { data: ticketData } = await supabase
       .from('tickets')
       .select('*, employees(full_name, email)')
@@ -118,6 +124,7 @@ export default function TicketDetails() {
       const typedTicket = ticketData as TicketRow;
       setTicket(typedTicket);
       setStatus(toStatusLabel(typedTicket.status));
+      loadTicketImagePreview(typedTicket.image_url);
     }
 
     const { data: commentsData } = await supabase
@@ -137,34 +144,75 @@ export default function TicketDetails() {
     }
   };
 
+  const loadTicketImagePreview = (imagePath: string | null) => {
+    if (!imagePath) {
+      setImagePreviewUrl(null);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from('ticket-images')
+      .getPublicUrl(imagePath);
+    setImagePreviewUrl(data.publicUrl);
+  };
+
   const handleStatusChange = async (value: string) => {
-    if (!isTicketStatus(value)) return;
+    if (!isTicketStatus(value) || !safeTicketId) return;
     setStatus(value);
     const mappedStatus = toTicketState(value);
-    await supabase.from('tickets').update({ status: mappedStatus }).eq('id', safeTicketId);
+    setIsUpdatingStatus(true);
+    const { error } = await supabase.from('tickets').update({ status: mappedStatus }).eq('id', safeTicketId);
+
+    if (error) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Status update failed',
+        text: error.message,
+      });
+      if (ticket) {
+        setStatus(toStatusLabel(ticket.status));
+      }
+    } else if (ticket) {
+      setTicket({ ...ticket, status: mappedStatus });
+    }
+
+    setIsUpdatingStatus(false);
   };
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newComment.trim() && currentUserId) {
-      const { data } = await supabase.from('ticket_comments').insert({
-        ticket_id: safeTicketId,
-        author_id: currentUserId,
-        author_role: 'technician',
-        message: newComment
-      }).select().single();
+    if (!newComment.trim() || !currentUserId || !safeTicketId) return;
 
-      if (data) {
-        setComments([...comments, {
-          id: data.id,
-          author: 'IT Support',
-          role: 'technician',
-          message: data.message,
-          timestamp: data.created_at ? new Date(data.created_at).toLocaleString() : '-',
-        }]);
-        setNewComment('');
-      }
+    setIsPostingComment(true);
+    const { data, error } = await supabase.from('ticket_comments').insert({
+      ticket_id: safeTicketId,
+      author_id: currentUserId,
+      author_role: 'technician',
+      message: newComment
+    }).select().single();
+
+    if (error) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Comment failed',
+        text: error.message,
+      });
+      setIsPostingComment(false);
+      return;
     }
+
+    if (data) {
+      setComments([...comments, {
+        id: data.id,
+        author: 'IT Support',
+        role: 'technician',
+        message: data.message,
+        timestamp: data.created_at ? new Date(data.created_at).toLocaleString() : '-',
+      }]);
+      setNewComment('');
+    }
+
+    setIsPostingComment(false);
   };
 
   const statusColors: Record<string, string> = {
@@ -247,19 +295,31 @@ export default function TicketDetails() {
             </div>
           </div>
 
+          <div className="mb-6">
+            <Label className="text-sm text-gray-400 mb-2 block">Image</Label>
+            {imagePreviewUrl ? (
+              <img
+                src={imagePreviewUrl}
+                alt="Ticket attachment preview"
+                className="max-h-80 rounded-lg border border-border bg-muted/20 object-contain"
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground">No image attached.</div>
+            )}
+          </div>
+
           <div className="max-w-xs">
             <Label htmlFor="status-select" className="text-sm text-gray-400 mb-2 block">Update Status</Label>
             <Select
               value={status}
               onValueChange={handleStatusChange}
             >
-              <SelectTrigger id="status-select" className="bg-slate-700 border-slate-600 text-white">
+              <SelectTrigger id="status-select" disabled={isUpdatingStatus} className="bg-slate-700 border-slate-600 text-white">
                 <SelectValue placeholder="Update status" />
               </SelectTrigger>
               <SelectContent className="bg-slate-800 border-slate-700 text-white">
                 <SelectItem value="Open">Open</SelectItem>
                 <SelectItem value="In Progress">In Progress</SelectItem>
-                <SelectItem value="Resolved">Resolved</SelectItem>
                 <SelectItem value="Closed">Closed</SelectItem>
               </SelectContent>
             </Select>
@@ -310,9 +370,10 @@ export default function TicketDetails() {
             </div>
             <Button
               type="submit"
+              disabled={isPostingComment}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
-              Add Comment
+              {isPostingComment ? 'Adding...' : 'Add Comment'}
             </Button>
           </form>
         </CardContent>

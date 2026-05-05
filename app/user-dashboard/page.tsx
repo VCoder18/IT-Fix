@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Swal from 'sweetalert2';
 import { supabase } from '@/lib/supabase';
 import { ensureUserRole } from '@/lib/auth/ensure-user-role';
 import type { Tables } from '@/lib/database';
@@ -28,11 +29,12 @@ type Ticket = {
   status: 'Open' | 'In Progress' | 'Resolved' | 'Closed';
   submittedAt: string;
   assignedTo?: string;
+  imageUrl?: string | null;
 };
 
 type TicketRow = Pick<
   Tables<'tickets'>,
-  'id' | 'short_id' | 'title' | 'description' | 'category' | 'urgency' | 'status' | 'created_at'
+  'id' | 'short_id' | 'title' | 'description' | 'category' | 'urgency' | 'status' | 'created_at' | 'image_url'
 > & {
   technicians:
     | Pick<Tables<'technicians'>, 'full_name'>
@@ -72,6 +74,8 @@ export default function UserDashboard() {
   const [filter, setFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isUser, setIsUser] = useState<boolean | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [deletingTicketId, setDeletingTicketId] = useState<string | null>(null);
 
   useEffect(() => {
     const checkEmployeeAccess = async () => {
@@ -95,6 +99,7 @@ export default function UserDashboard() {
         }
 
         setIsUser(true);
+        setCurrentUserId(user.id);
         fetchTickets(user.id);
       } catch (error) {
         const message =
@@ -128,6 +133,7 @@ export default function UserDashboard() {
         urgency,
         status,
         created_at,
+        image_url,
         technicians ( full_name )
       `)
       .eq('employee_id', employeeId)
@@ -147,10 +153,79 @@ export default function UserDashboard() {
             status: toStatusLabel(t.status),
             submittedAt: t.created_at ? new Date(t.created_at).toLocaleString() : '-',
             assignedTo: getRelatedName(t.technicians),
+            imageUrl: t.image_url,
           };
         })
       );
     }
+  };
+
+  const handleDeleteTicket = async (ticket: Ticket) => {
+    const confirmation = await Swal.fire({
+      icon: 'warning',
+      title: 'Delete ticket?',
+      text: `Ticket #${ticket.short_id} will be permanently deleted.`,
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#dc2626',
+    });
+
+    if (!confirmation.isConfirmed) return;
+    if (!currentUserId) return;
+
+    setDeletingTicketId(ticket.id);
+
+    const { data: deletedRows, error: deleteError } = await supabase
+      .from('tickets')
+      .delete()
+      .eq('id', ticket.id)
+      .eq('employee_id', currentUserId)
+      .select('id');
+
+    if (deleteError) {
+      const details = [deleteError.message, deleteError.details, deleteError.hint].filter(Boolean).join('\n');
+      await Swal.fire({
+        icon: 'error',
+        title: 'Delete failed',
+        text: details || 'Unable to delete this ticket.',
+      });
+      setDeletingTicketId(null);
+      return;
+    }
+
+    if (!deletedRows || deletedRows.length === 0) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Delete blocked',
+        text: 'No rows were deleted. This is usually an RLS policy issue (missing DELETE policy on tickets).',
+      });
+      setDeletingTicketId(null);
+      return;
+    }
+
+    setTickets((current) => current.filter((t) => t.id !== ticket.id));
+
+    if (ticket.imageUrl) {
+      const { error: storageError } = await supabase.storage
+        .from('ticket-images')
+        .remove([ticket.imageUrl]);
+
+      if (storageError) {
+        await Swal.fire({
+          icon: 'warning',
+          title: 'Ticket deleted with warning',
+          text: `Ticket was removed, but image cleanup failed: ${storageError.message}`,
+        });
+      }
+    }
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'Ticket deleted',
+    });
+
+    setDeletingTicketId(null);
   };
 
   const urgencyVariants: Record<string, "outline" | "default" | "secondary" | "destructive"> = {
@@ -274,47 +349,58 @@ export default function UserDashboard() {
             <Table>
               <TableHeader className="bg-muted/30">
                 <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-gray-300 font-bold">Ticket ID</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Title</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Category</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Urgency</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Status</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Assigned To</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Date</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Actions</TableHead>
+                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Ticket ID</TableHead>
+                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Title</TableHead>
+                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Category</TableHead>
+                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Urgency</TableHead>
+                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Status</TableHead>
+                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Assigned To</TableHead>
+                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Date</TableHead>
+                  <TableHead className="px-4 md:px-6 text-center text-gray-300 font-bold">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTickets.map(ticket => (
                   <TableRow key={ticket.id} className="border-border hover:bg-muted/20">
-                    <TableCell className="font-medium text-foreground">{ticket.short_id}</TableCell>
-                    <TableCell className="text-foreground">{ticket.title}</TableCell>
-                    <TableCell className="text-muted-foreground">{ticket.category}</TableCell>
-                    <TableCell>
+                    <TableCell className="px-4 md:px-6 font-medium text-foreground">{ticket.short_id}</TableCell>
+                    <TableCell className="px-4 md:px-6 text-foreground">{ticket.title}</TableCell>
+                    <TableCell className="px-4 md:px-6 text-muted-foreground">{ticket.category}</TableCell>
+                    <TableCell className="px-4 md:px-6">
                       <Badge variant={urgencyVariants[ticket.urgency]}>
                         {ticket.urgency}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-4 md:px-6">
                       <Badge className={`${statusColors[ticket.status]} border-none text-white shadow-sm`}>
                         {ticket.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{ticket.assignedTo || '-'}</TableCell>
-                    <TableCell className="text-muted-foreground whitespace-nowrap">{ticket.submittedAt}</TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/user-ticket/${ticket.id}`}
-                        className="text-primary hover:bg-primary/10 px-3 py-1.5 rounded-md font-medium transition-all"
-                      >
-                        View/Edit
-                      </Link>
+                    <TableCell className="px-4 md:px-6 text-muted-foreground">{ticket.assignedTo || '-'}</TableCell>
+                    <TableCell className="px-4 md:px-6 text-muted-foreground whitespace-nowrap">{ticket.submittedAt}</TableCell>
+                    <TableCell className="px-4 md:px-6 text-center">
+                      <div className="flex items-center justify-center gap-3">
+                        <Link
+                          href={`/user-ticket/${ticket.id}`}
+                          className="text-primary hover:bg-primary/10 px-3 py-1.5 rounded-md font-medium transition-all"
+                        >
+                          View/Edit
+                        </Link>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          disabled={deletingTicketId === ticket.id}
+                          onClick={() => handleDeleteTicket(ticket)}
+                        >
+                          {deletingTicketId === ticket.id ? 'Deleting...' : 'Delete'}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
                 {filteredTickets.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-400">
+                    <TableCell colSpan={8} className="px-4 md:px-6 text-center py-8 text-gray-400">
                       No tickets found.
                     </TableCell>
                   </TableRow>
