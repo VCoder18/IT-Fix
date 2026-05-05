@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Swal from 'sweetalert2';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
-import type { Tables } from '@/lib/database';
+import type { Tables, TablesInsert } from '@/lib/database';
+import { ensureUserRole } from '@/lib/auth/ensure-user-role';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -18,81 +20,194 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
-import { Suspense } from 'react';
+type TicketFormValues = Pick<
+  TablesInsert<'tickets'>,
+  'title' | 'description' | 'category' | 'urgency'
+>;
+
+type TechnicianOption = Pick<Tables<'technicians'>, 'id' | 'full_name'>;
 
 function SubmitTicketContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const technicianId = searchParams.get('technician');
-  const [technicianName, setTechnicianName] = useState<string | null>(null);
+  const preferredTechnicianId = searchParams.get('technician');
 
-  const [formData, setFormData] = useState({
+  const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+  const [submitted, setSubmitted] = useState(false);
+  const [isEmployee, setIsEmployee] = useState<boolean | null>(null);
+  const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [formData, setFormData] = useState<TicketFormValues>({
     title: '',
     description: '',
     category: 'Hardware',
     urgency: 'Medium',
-    name: '',
-    email: '',
   });
-  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    const fetchSelectedTechnician = async () => {
-      if (!technicianId) {
-        setTechnicianName(null);
+    const setupPage = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setIsEmployee(false);
+        router.replace('/login');
         return;
       }
 
-      const { data, error } = await supabase
-        .from('technicians')
-        .select('full_name')
-        .eq('id', technicianId)
-        .single();
-
-      if (!error && data) {
-        setTechnicianName((data as Pick<Tables<'technicians'>, 'full_name'>).full_name);
-      } else {
-        setTechnicianName(null);
+      try {
+        const role = await ensureUserRole(supabase, user);
+        if (role !== 'employee') {
+          setIsEmployee(false);
+          router.replace('/login');
+          return;
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? encodeURIComponent(error.message)
+            : 'Unable%20to%20resolve%20user%20role';
+        setIsEmployee(false);
+        router.replace(`/login?error=${message}`);
+        return;
       }
+
+      const { data: techniciansData, error: techniciansError } = await supabase
+        .from('technicians')
+        .select('id, full_name')
+        .order('full_name', { ascending: true });
+
+      if (!techniciansError && techniciansData) {
+        const options = techniciansData as TechnicianOption[];
+        setTechnicians(options);
+
+        const initialTechnician =
+          (preferredTechnicianId && options.some((tech) => tech.id === preferredTechnicianId)
+            ? preferredTechnicianId
+            : options[0]?.id) ?? null;
+
+        setEmployeeId(user.id);
+        setSelectedTechnicianId(initialTechnician);
+      } else {
+        setEmployeeId(user.id);
+      }
+
+      setIsEmployee(true);
     };
 
-    fetchSelectedTechnician();
-  }, [technicianId]);
+    setupPage();
+  }, [preferredTechnicianId, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!employeeId || !selectedTechnicianId) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'No technician available',
+        text: 'No technician is available right now.',
+      });
+      return;
+    }
+    if (!imageFile) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Image required',
+        text: 'Please upload an image.',
+      });
+      return;
+    }
+
     setSubmitted(true);
-    
-    // Attempt to save to Supabase
-    const { data, error } = await supabase.from('tickets').insert({
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (!allowedTypes.includes(imageFile.type)) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Unsupported image format',
+        text: 'Only PNG, JPEG, JPG, and WEBP images are allowed.',
+      });
+      setSubmitted(false);
+      return;
+    }
+
+    const maxBytes = 10 * 1024 * 1024;
+    if (imageFile.size > maxBytes) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Image too large',
+        text: 'Image must be 10MB or smaller.',
+      });
+      setSubmitted(false);
+      return;
+    }
+
+    const fileExt = imageFile.name.split('.').pop()?.toLowerCase() || 'png';
+    const safeExt = ['png', 'jpeg', 'jpg', 'webp'].includes(fileExt) ? fileExt : 'png';
+    const imagePath = `${employeeId}/${Date.now()}.${safeExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('ticket-images')
+      .upload(imagePath, imageFile, {
+        upsert: false,
+        contentType: imageFile.type,
+      });
+
+    if (uploadError) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Upload failed',
+        text: `Error uploading image: ${uploadError.message}`,
+      });
+      setSubmitted(false);
+      return;
+    }
+
+    const payload: Pick<
+      TablesInsert<'tickets'>,
+      'title' | 'description' | 'category' | 'urgency' | 'image_url' | 'employee_id' | 'technician_id'
+    > = {
       title: formData.title,
       description: formData.description,
       category: formData.category,
       urgency: formData.urgency,
-      status: 'pending',
-      technician_id: technicianId
-    }).select().single();
+      image_url: imagePath,
+      employee_id: employeeId,
+      technician_id: selectedTechnicianId,
+    };
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .insert(payload)
+      .select()
+      .single();
 
     if (error) {
-      console.error('Error submitting ticket:', error);
-      alert('Error submitting ticket. Check console for details.');
+      await Swal.fire({
+        icon: 'error',
+        title: 'Ticket submission failed',
+        text: `Error submitting ticket: ${error.message}`,
+      });
       setSubmitted(false);
       return;
     }
 
     const ticketId = data?.short_id || data?.id.substring(0, 8);
-    alert(`Ticket submitted successfully! Your ticket ID is: ${ticketId}`);
-    setSubmitted(false);
-    setFormData({
-      title: '',
-      description: '',
-      category: 'Hardware',
-      urgency: 'Medium',
-      name: '',
-      email: '',
+    await Swal.fire({
+      icon: 'success',
+      title: 'Ticket submitted',
+      text: `Ticket submitted successfully! Your ticket ID is: ${ticketId}`,
     });
+    setSubmitted(false);
+    setImageFile(null);
     router.push('/user-dashboard');
   };
+
+  if (isEmployee !== true) return null;
+  const selectedTechnicianName =
+    technicians.find((tech) => tech.id === selectedTechnicianId)?.full_name ?? 'Not selected';
 
   return (
     <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
@@ -105,22 +220,12 @@ function SubmitTicketContent() {
         </Link>
       </div>
 
-      {technicianName && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 shadow-sm">
-          <p className="text-blue-700">
-            Submitting ticket to: <span className="font-medium text-blue-900">{technicianName}</span>
-          </p>
-        </div>
-      )}
-
-      <p className="text-center text-muted-foreground mb-8">
-        Report an issue — we'll get you back on track
-      </p>
-
       <Card className="bg-card border-border mb-8 shadow-sm">
         <CardHeader>
           <CardTitle className="text-2xl text-foreground">Submit a Ticket</CardTitle>
-          <CardDescription className="text-muted-foreground">Please provide the details of your issue</CardDescription>
+          <CardDescription className="text-muted-foreground">
+            Assigned technician: <span className="font-medium text-foreground">{selectedTechnicianName}</span>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -173,6 +278,7 @@ function SubmitTicketContent() {
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="space-y-2">
                 <Label className="text-foreground">Urgency</Label>
                 <Select
@@ -192,39 +298,29 @@ function SubmitTicketContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-foreground">
-                  Your Name <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="name"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Full name"
-                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-primary"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-foreground">
-                  Email <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="you@company.com"
-                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-primary"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="ticket-image" className="text-foreground">
+                Image <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="ticket-image"
+                type="file"
+                required
+                accept=".png,.jpeg,.jpg,.webp,image/png,image/jpeg,image/webp"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setImageFile(file);
+                }}
+                className="bg-muted border-border text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-3 file:py-1.5 file:mr-3"
+              />
+              <p className="text-xs text-muted-foreground">
+                PNG, JPEG, JPG, or WEBP up to 10MB.
+              </p>
             </div>
 
             <Button
               type="submit"
-              disabled={submitted}
+              disabled={submitted || !employeeId || !selectedTechnicianId || !imageFile}
               className="w-full bg-green-600 hover:bg-green-700 text-white h-12 text-lg"
             >
               {submitted ? 'Submitting...' : 'Submit Ticket →'}

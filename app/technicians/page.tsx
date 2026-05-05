@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
-type Technician = Pick<Tables<'technicians'>, 'id' | 'full_name' | 'email' | 'bio' | 'status'>;
+type Technician = Pick<Tables<'technicians'>, 'id' | 'full_name' | 'bio' | 'status'>;
 
 function toAvailabilityLabel(status: Technician['status']): 'Available' | 'Busy' | 'Offline' {
   if (status === 'available') return 'Available';
@@ -26,7 +26,7 @@ export default function Technicians() {
     const fetchTechnicians = async () => {
       const { data, error } = await supabase
         .from('technicians')
-        .select('id, full_name, email, bio, status')
+        .select('id, full_name, bio, status')
         .order('full_name', { ascending: true });
 
       if (!error && data) {
@@ -47,7 +47,6 @@ export default function Technicians() {
     const availability = toAvailabilityLabel(tech.status);
     const matchesSearch =
       tech.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tech.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (tech.bio ?? '').toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesAvailability =
@@ -81,7 +80,7 @@ export default function Technicians() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, email, or bio..."
+              placeholder="Search by name or bio..."
               className="w-full px-4 py-3 border border-border bg-muted/50 text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent placeholder:text-muted-foreground"
             />
           </div>
@@ -123,7 +122,7 @@ export default function Technicians() {
                   </div>
                   <div>
                     <CardTitle className="text-lg text-foreground">{tech.full_name}</CardTitle>
-                    <CardDescription className="text-muted-foreground">{tech.email}</CardDescription>
+                    <CardDescription className="text-muted-foreground">Technician</CardDescription>
                   </div>
                 </div>
                 <Badge className={`${availabilityColors[toAvailabilityLabel(tech.status)]} border-none rounded-full px-3 py-1 font-medium shadow-sm`}>
@@ -156,7 +155,7 @@ export default function Technicians() {
                 className="w-full bg-green-600 hover:bg-green-700 text-white"
               >
                 <Link href={`/submit?technician=${tech.id}`}>
-                  Submit Ticket to {tech.full_name.split(' ')[0]}
+                  Submit Ticket to {tech.full_name}
                 </Link>
               </Button>
             </CardFooter>
