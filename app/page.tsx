@@ -43,23 +43,28 @@ export default function Landing() {
       });
 
       // Background transitions to black as we enter the footer
-      gsap.to(bgRef.current, {
-        backgroundColor: '#000000',
-        ease: 'none',
-        scrollTrigger: {
-          trigger: '#section-cta',
-          start: 'top 60%',
-          end: 'top top',
-          scrub: 1,
-        },
-      });
+      if (bgRef.current) {
+        gsap.to(bgRef.current, {
+          backgroundColor: '#000000',
+          ease: 'none',
+          scrollTrigger: {
+            trigger: '#section-cta',
+            start: 'top 60%',
+            end: 'top top',
+            scrub: 1,
+          },
+        });
+      }
     });
 
     return () => ctx.revert();
   }, []);
 
   return (
-    <main ref={mainRef} className="text-foreground relative selection:bg-green-500/30 bg-[#0b1120]">
+    <main ref={mainRef} className="text-foreground relative selection:bg-green-500/30">
+      {/* Fixed dark background that transitions to black */}
+      <div ref={bgRef} className="fixed inset-0 -z-20 bg-slate-900" />
+      <TesseractBackground />
 
       <div className="max-w-7xl mx-auto px-6">
         {/* Hero Section */}
@@ -129,7 +134,7 @@ export default function Landing() {
       </div>
 
       {/* Fused CTA + Footer (Inspired by screenshot) */}
-      <section id="section-cta" className="relative min-h-[80vh] flex flex-col justify-between pt-32 pb-12 px-6 border-t border-[#334155] overflow-hidden bg-[#0f172a]">
+      <section id="section-cta" className="relative min-h-[80vh] flex flex-col justify-between pt-32 pb-12 px-6 border-t border-[#334155] overflow-hidden">
         <div className="reveal max-w-7xl mx-auto w-full flex-grow flex flex-col justify-center items-center relative z-10">
           {/* Background huge typography effect */}
           <div className="absolute inset-0 flex items-center justify-center -z-10 opacity-5 pointer-events-none">

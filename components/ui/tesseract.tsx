@@ -21,8 +21,15 @@ export function TesseractBackground() {
       // Query all faces globally (not scoped)
       const faces = document.querySelectorAll('.cube-face');
 
-      // ── Phase 1: Hero → Features ──
-      // Cube starts centered, rounds to sphere, drifts right
+      // ── Force initial state — GSAP caches stale values across renders ──
+      gsap.set(shape, { x: 0, scale: 1 });
+      faces.forEach((face) => {
+        (face as HTMLElement).style.borderRadius = '0%';
+        (face as HTMLElement).style.removeProperty('clip-path');
+      });
+
+      // ── Phase 1: Hero → Features ("How We Help") ──
+      // Cube (0%) → rounded cube (15%), drifts right
       ScrollTrigger.create({
         trigger: '#section-features',
         start: 'top 80%',
@@ -34,14 +41,15 @@ export function TesseractBackground() {
             x: `${p * 25}vw`,
             scale: 1 - (p * 0.2),
           });
+          // 0% → 15% border-radius
           faces.forEach((face) => {
-            (face as HTMLElement).style.borderRadius = `${p * 50}%`;
+            (face as HTMLElement).style.borderRadius = `${p * 15}%`;
           });
         },
       });
 
-      // ── Phase 2: Features → Impact ──
-      // Sphere slides from right to left, stays round
+      // ── Phase 2: Features → Impact ("Our Impact") ──
+      // 15% rounded cube → more rounded (35%), slides to left
       ScrollTrigger.create({
         trigger: '#section-impact',
         start: 'top 80%',
@@ -53,14 +61,15 @@ export function TesseractBackground() {
             x: `${25 - (p * 50)}vw`,
             scale: 0.8 + (p * 0.3),
           });
+          // 15% → 35% border-radius
           faces.forEach((face) => {
-            (face as HTMLElement).style.borderRadius = '50%';
+            (face as HTMLElement).style.borderRadius = `${15 + p * 20}%`;
           });
         },
       });
 
       // ── Phase 3: Impact → CTA/Footer ──
-      // Sphere centers, scales up huge
+      // 35% rounded → full circle (50%), centers, scales up huge
       ScrollTrigger.create({
         trigger: '#section-cta',
         start: 'top 80%',
@@ -72,8 +81,9 @@ export function TesseractBackground() {
             x: `${-25 + (p * 25)}vw`,
             scale: 1.1 + (p * 1.4),
           });
+          // 35% → 50% border-radius (full circle)
           faces.forEach((face) => {
-            (face as HTMLElement).style.borderRadius = '50%';
+            (face as HTMLElement).style.borderRadius = `${35 + p * 15}%`;
           });
           gsap.set(icon, { opacity: 1 - p });
         },
