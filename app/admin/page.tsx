@@ -73,8 +73,6 @@ export default function AdminDashboard() {
     checkAdminAccess();
   }, [router]);
 
-  if (isAdmin !== true) return null;
-
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (!error) {
@@ -145,6 +143,8 @@ export default function AdminDashboard() {
     inProgress: tickets.filter(t => t.status === 'In Progress').length,
     resolved: tickets.filter(t => t.status === 'Resolved').length,
   };
+
+  if (isAdmin !== true) return null;
 
   return (
     <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
