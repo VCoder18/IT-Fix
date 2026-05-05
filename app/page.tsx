@@ -159,8 +159,8 @@ export default function Landing() {
             </div>
 
             <div className="text-center lg:text-right max-w-sm">
-              <p className="text-xl font-medium">info@itfix.com</p>
-              <p className="text-xl font-medium">+213 555 123 456</p>
+              <p className="text-xl font-medium">itfix@estin.dz</p>
+              <p className="text-xl font-medium">+213 123 456 789</p>
               <div className="mt-8 text-sm text-gray-500 tracking-widest uppercase lg:text-right">
                 For Inquiries
               </div>

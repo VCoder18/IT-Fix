@@ -246,12 +246,11 @@ export default function UserTicketDetails() {
       const fileExt = imageFile.name.split('.').pop()?.toLowerCase() || 'png';
       const safeExt = ['png', 'jpeg', 'jpg', 'webp'].includes(fileExt) ? fileExt : 'png';
       const uploadPath = previousImagePath ?? `${currentUserId}/${Date.now()}.${safeExt}`;
-      const shouldUpsert = Boolean(previousImagePath);
 
       const { error: uploadError } = await supabase.storage
         .from('ticket-images')
         .upload(uploadPath, imageFile, {
-          upsert: shouldUpsert,
+          upsert: true,
           contentType: imageFile.type,
         });
 

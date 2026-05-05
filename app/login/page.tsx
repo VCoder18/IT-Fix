@@ -1,107 +1,54 @@
-"use client";
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import type { Database } from '@/lib/database';
+import { getRoleFromEmail } from '@/lib/auth/roles';
+import { LoginForm } from './login-form';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Lock } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { ensureUserRole } from '@/lib/auth/ensure-user-role';
+type LoginPageProps = {
+  searchParams?: Promise<{ error?: string | string[] }>;
+};
 
-export default function UnifiedLogin() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+function resolveRole(user: { email?: string | null; user_metadata?: { role?: unknown } }): 'technician' | 'employee' {
+  if (user.user_metadata?.role === 'technician' || user.user_metadata?.role === 'employee') {
+    return user.user_metadata.role;
+  }
+  return getRoleFromEmail(user.email ?? '');
+}
 
-  useEffect(() => {
-    const urlError = new URLSearchParams(window.location.search).get('error');
-    if (urlError) {
-      setError(urlError);
-    }
+export default async function UnifiedLogin({ searchParams }: LoginPageProps) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    const checkExistingSession = async () => {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing supabase env variables');
+  }
 
-      if (userError || !user) return;
-
-      try {
-        const role = await ensureUserRole(supabase, user);
-        router.replace(role === 'technician' ? '/admin' : '/user-dashboard');
-      } catch (metadataError) {
-        const message =
-          metadataError instanceof Error
-            ? metadataError.message
-            : 'Unable to resolve user role.';
-        setError(message);
-      }
-    };
-
-    checkExistingSession();
-  }, [router]);
-
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    setError('');
-
-    const callbackUrl = `${window.location.origin}/api/auth/callback`;
-    const { error: signInError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: callbackUrl,
+  const cookieStore = await cookies();
+  const supabase = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
       },
-    });
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) =>
+          cookieStore.set(name, value, options)
+        );
+      },
+    },
+  });
 
-    if (signInError) {
-      setError(signInError.message);
-      setLoading(false);
-    }
-  };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  return (
-    <main className="min-h-screen w-full flex items-center justify-center p-6 relative bg-background text-foreground">
-      <Link
-        href="/"
-        className="absolute top-6 left-6 text-green-600 hover:text-green-700 text-base font-medium flex items-center gap-2 z-10 bg-card p-2 rounded-lg shadow-sm border border-border"
-      >
-        <span>←</span> Back to Home
-      </Link>
+  if (user) {
+    const role = resolveRole(user);
+    redirect(role === 'technician' ? '/admin' : '/user-dashboard');
+  }
 
-      <div className="w-full max-w-2xl">
-        <Card className="bg-card border-border shadow-xl">
-          <CardHeader className="text-center pt-10 px-8 pb-6">
-            <div className="flex justify-center mb-6">
-              <div className="w-20 h-20 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3 hover:rotate-0 transition-transform">
-                <Lock className="w-10 h-10 text-white" />
-              </div>
-            </div>
-            <CardTitle className="text-4xl text-white font-bold tracking-tight">Login</CardTitle>
-            <CardDescription className="text-gray-300 text-lg mt-2">
-              Sign in with your Google account
-            </CardDescription>
-          </CardHeader>
+  const params = searchParams ? await searchParams : undefined;
+  const urlError = Array.isArray(params?.error) ? params?.error[0] : params?.error;
 
-          <CardContent className="px-8 pb-10 space-y-6">
-            {error && (
-              <div className="p-4 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-base">
-                {error}
-              </div>
-            )}
-
-            <Button
-              type="button"
-              disabled={loading}
-              onClick={handleGoogleSignIn}
-              className="w-full bg-green-600 hover:bg-green-700 text-white h-14 text-lg font-medium rounded-xl"
-            >
-              {loading ? 'Redirecting...' : 'Continue with Google'}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    </main>
-  );
+  return <LoginForm initialError={urlError ?? ''} />;
 }

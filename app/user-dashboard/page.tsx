@@ -66,6 +66,39 @@ function toUrgencyLabel(urgency: string): Ticket['urgency'] {
   return 'Medium';
 }
 
+function normalizeStoragePath(path: string): string {
+  if (!path.startsWith('http://') && !path.startsWith('https://')) {
+    return path;
+  }
+
+  try {
+    const url = new URL(path);
+    const marker = '/object/public/ticket-images/';
+    const markerIndex = url.pathname.indexOf(marker);
+    if (markerIndex >= 0) {
+      return decodeURIComponent(url.pathname.slice(markerIndex + marker.length));
+    }
+  } catch {
+    return path;
+  }
+
+  return path;
+}
+
+function toCandidateImagePaths(path: string): string[] {
+  const normalized = normalizeStoragePath(path).trim();
+  if (!normalized) return [];
+
+  const candidates = new Set<string>([normalized]);
+  if (normalized.startsWith('/')) {
+    candidates.add(normalized.slice(1));
+  } else {
+    candidates.add(`/${normalized}`);
+  }
+
+  return Array.from(candidates);
+}
+
 // Mock tickets removed in favor of Supabase data
 
 export default function UserDashboard() {
@@ -209,9 +242,10 @@ export default function UserDashboard() {
     const deletedImagePath = deletedRows[0]?.image_url ?? ticket.imageUrl;
     let cleanupWarning: string | null = null;
     if (deletedImagePath) {
+      const imagePaths = toCandidateImagePaths(deletedImagePath);
       const { error: storageError } = await supabase.storage
         .from('ticket-images')
-        .remove([deletedImagePath]);
+        .remove(imagePaths);
 
       if (storageError) {
         cleanupWarning = storageError.message;
