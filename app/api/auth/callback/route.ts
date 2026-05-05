@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import type { Database, TablesInsert } from '@/lib/database'
 import { getRoleFromEmail } from '@/lib/auth/roles'
 
 export async function GET(request: Request) {
@@ -24,15 +26,16 @@ export async function GET(request: Request) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
     return NextResponse.redirect(
       new URL('/login?error=Missing%20Supabase%20configuration', requestUrl.origin)
     )
   }
 
   const cookieStore = await cookies()
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll()
@@ -42,6 +45,12 @@ export async function GET(request: Request) {
           cookieStore.set(name, value, options)
         )
       },
+    },
+  })
+  const privateSupabase = createClient<Database>(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
     },
   })
 
@@ -64,6 +73,63 @@ export async function GET(request: Request) {
   }
 
   const role = getRoleFromEmail(user.email)
+  const fullName =
+    (typeof user.user_metadata?.full_name === 'string' && user.user_metadata.full_name.trim()) ||
+    (typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()) ||
+    (typeof user.user_metadata?.given_name === 'string' && user.user_metadata.given_name.trim()) ||
+    user.email.split('@')[0] ||
+    'User'
+
+  const [{ data: employeeProfile, error: employeeLookupError }, { data: technicianProfile, error: technicianLookupError }] =
+    await Promise.all([
+      privateSupabase.from('employees').select('id').eq('id', user.id).maybeSingle(),
+      privateSupabase.from('technicians').select('id').eq('id', user.id).maybeSingle(),
+    ])
+
+  if (employeeLookupError || technicianLookupError) {
+    const lookupError = employeeLookupError ?? technicianLookupError
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent(lookupError.message)}`, requestUrl.origin)
+    )
+  }
+
+  const isNewAccount = !employeeProfile && !technicianProfile
+  if (isNewAccount) {
+    if (role === 'technician') {
+      const technicianInsert: TablesInsert<'technicians'> = {
+        id: user.id,
+        full_name: fullName,
+        email: user.email,
+      }
+      const { error: technicianInsertError } = await privateSupabase
+        .from('technicians')
+        .upsert(technicianInsert, { onConflict: 'id', ignoreDuplicates: true })
+
+      if (technicianInsertError) {
+        await supabase.auth.signOut()
+        return NextResponse.redirect(
+          new URL(`/login?error=${encodeURIComponent(technicianInsertError.message)}`, requestUrl.origin)
+        )
+      }
+    } else {
+      const employeeInsert: TablesInsert<'employees'> = {
+        id: user.id,
+        full_name: fullName,
+        email: user.email,
+      }
+      const { error: employeeInsertError } = await privateSupabase
+        .from('employees')
+        .upsert(employeeInsert, { onConflict: 'id', ignoreDuplicates: true })
+
+      if (employeeInsertError) {
+        await supabase.auth.signOut()
+        return NextResponse.redirect(
+          new URL(`/login?error=${encodeURIComponent(employeeInsertError.message)}`, requestUrl.origin)
+        )
+      }
+    }
+  }
+
   const { error: metadataError } = await supabase.auth.updateUser({
     data: {
       role,

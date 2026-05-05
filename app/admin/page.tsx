@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ensureUserRole } from '@/lib/auth/ensure-user-role';
+import type { Tables } from '@/lib/database';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -27,6 +28,40 @@ type Ticket = {
   submittedBy: string;
   submittedAt: string;
 };
+
+type TicketRow = Pick<
+  Tables<'tickets'>,
+  'id' | 'short_id' | 'title' | 'category' | 'urgency' | 'status' | 'created_at'
+> & {
+  employees:
+    | Pick<Tables<'employees'>, 'full_name'>
+    | Pick<Tables<'employees'>, 'full_name'>[]
+    | null;
+};
+
+function getSubmittedBy(
+  relation:
+    | Pick<Tables<'employees'>, 'full_name'>
+    | Pick<Tables<'employees'>, 'full_name'>[]
+    | null
+): string {
+  if (!relation) return 'Unknown';
+  return Array.isArray(relation) ? (relation[0]?.full_name ?? 'Unknown') : relation.full_name;
+}
+
+function toStatusLabel(status: Tables<'tickets'>['status']): Ticket['status'] {
+  if (status === 'taken') return 'In Progress';
+  if (status === 'closed') return 'Closed';
+  return 'Open';
+}
+
+function toUrgencyLabel(urgency: string): Ticket['urgency'] {
+  const normalized = urgency.toLowerCase();
+  if (normalized === 'low') return 'Low';
+  if (normalized === 'high') return 'High';
+  if (normalized === 'critical') return 'Critical';
+  return 'Medium';
+}
 
 // Mock tickets removed in favor of Supabase data
 
@@ -96,21 +131,18 @@ export default function AdminDashboard() {
       .order('created_at', { ascending: false });
 
     if (data && !error) {
+      const rows = data as TicketRow[];
       setTickets(
-        data.map((t: any) => {
-          let statusText = 'Open';
-          if (t.status === 'taken') statusText = 'In Progress';
-          if (t.status === 'closed') statusText = 'Closed';
-
+        rows.map((t) => {
           return {
             id: t.id,
             short_id: t.short_id || t.id.substring(0, 8),
             title: t.title,
             category: t.category,
-            urgency: t.urgency,
-            status: statusText as any,
-            submittedBy: t.employees?.full_name || 'Unknown',
-            submittedAt: new Date(t.created_at).toLocaleString(),
+            urgency: toUrgencyLabel(t.urgency),
+            status: toStatusLabel(t.status),
+            submittedBy: getSubmittedBy(t.employees),
+            submittedAt: t.created_at ? new Date(t.created_at).toLocaleString() : '-',
           };
         })
       );

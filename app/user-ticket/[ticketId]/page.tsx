@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { ensureUserRole } from '@/lib/auth/ensure-user-role';
+import type { Tables } from '@/lib/database';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -28,10 +29,31 @@ type Comment = {
   timestamp: string;
 };
 
+type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+
+type TicketRow = Tables<'tickets'> & {
+  technicians:
+    | Pick<Tables<'technicians'>, 'full_name'>
+    | Pick<Tables<'technicians'>, 'full_name'>[]
+    | null;
+};
+
+function getTechnicianName(relation: TicketRow['technicians']): string {
+  if (!relation) return 'Unassigned';
+  if (Array.isArray(relation)) return relation[0]?.full_name ?? 'Unassigned';
+  return relation.full_name;
+}
+
+function toStatusLabel(status: Tables<'tickets'>['status']): TicketStatus {
+  if (status === 'taken') return 'In Progress';
+  if (status === 'closed') return 'Closed';
+  return 'Open';
+}
+
 export default function UserTicketDetails() {
   const { ticketId } = useParams();
   const router = useRouter();
-  const [ticket, setTicket] = useState<any>(null);
+  const [ticket, setTicket] = useState<TicketRow | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -43,7 +65,7 @@ export default function UserTicketDetails() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [isEditing, setIsEditing] = useState(false);
-  const [status, setStatus] = useState('Open');
+  const [status, setStatus] = useState<TicketStatus>('Open');
   const safeTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
 
   useEffect(() => {
@@ -91,17 +113,15 @@ export default function UserTicketDetails() {
       .single();
 
     if (ticketData) {
-      setTicket(ticketData);
+      const typedTicket = ticketData as TicketRow;
+      setTicket(typedTicket);
       setFormData({
-        title: ticketData.title,
-        description: ticketData.description,
-        category: ticketData.category,
-        urgency: ticketData.urgency,
+        title: typedTicket.title,
+        description: typedTicket.description,
+        category: typedTicket.category,
+        urgency: typedTicket.urgency,
       });
-      let statusText = 'Open';
-      if (ticketData.status === 'taken') statusText = 'In Progress';
-      if (ticketData.status === 'closed') statusText = 'Closed';
-      setStatus(statusText);
+      setStatus(toStatusLabel(typedTicket.status));
     }
 
     const { data: commentsData } = await supabase
@@ -116,7 +136,7 @@ export default function UserTicketDetails() {
         author: c.author_role === 'technician' ? 'Technician' : 'You',
         role: c.author_role === 'technician' ? 'technician' : 'user',
         message: c.message,
-        timestamp: new Date(c.created_at).toLocaleString(),
+        timestamp: c.created_at ? new Date(c.created_at).toLocaleString() : '-',
       })));
     }
   };
@@ -137,7 +157,7 @@ export default function UserTicketDetails() {
           author: 'You',
           role: 'user',
           message: data.message,
-          timestamp: new Date(data.created_at).toLocaleString(),
+          timestamp: data.created_at ? new Date(data.created_at).toLocaleString() : '-',
         }]);
         setNewComment('');
       }
@@ -221,7 +241,7 @@ export default function UserTicketDetails() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-border">
             <div>
               <Label className="text-xs text-gray-400 mb-1 block uppercase tracking-wider">Assigned To</Label>
-              <div className="text-foreground font-medium">{ticket.technicians?.full_name || 'Unassigned'}</div>
+               <div className="text-foreground font-medium">{getTechnicianName(ticket.technicians)}</div>
             </div>
             <div>
               <Label className="text-xs text-gray-400 mb-1 block uppercase tracking-wider">Submitted At</Label>

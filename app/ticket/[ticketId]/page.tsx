@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { ensureUserRole } from '@/lib/auth/ensure-user-role';
+import type { Tables } from '@/lib/database';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -26,11 +27,43 @@ type Comment = {
   timestamp: string;
 };
 
+type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+
+type TicketRow = Tables<'tickets'> & {
+  employees:
+    | Pick<Tables<'employees'>, 'full_name' | 'email'>
+    | Pick<Tables<'employees'>, 'full_name' | 'email'>[]
+    | null;
+};
+
+function getEmployee(
+  relation: TicketRow['employees']
+): Pick<Tables<'employees'>, 'full_name' | 'email'> | null {
+  if (!relation) return null;
+  return Array.isArray(relation) ? (relation[0] ?? null) : relation;
+}
+
+function toStatusLabel(status: Tables<'tickets'>['status']): TicketStatus {
+  if (status === 'taken') return 'In Progress';
+  if (status === 'closed') return 'Closed';
+  return 'Open';
+}
+
+function toTicketState(status: TicketStatus): Tables<'tickets'>['status'] {
+  if (status === 'In Progress') return 'taken';
+  if (status === 'Closed' || status === 'Resolved') return 'closed';
+  return 'pending';
+}
+
+function isTicketStatus(value: string): value is TicketStatus {
+  return value === 'Open' || value === 'In Progress' || value === 'Resolved' || value === 'Closed';
+}
+
 export default function TicketDetails() {
   const { ticketId } = useParams();
   const router = useRouter();
-  const [ticket, setTicket] = useState<any>(null);
-  const [status, setStatus] = useState<'Open' | 'In Progress' | 'Resolved' | 'Closed'>('Open');
+  const [ticket, setTicket] = useState<TicketRow | null>(null);
+  const [status, setStatus] = useState<TicketStatus>('Open');
   const [newComment, setNewComment] = useState('');
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -82,11 +115,9 @@ export default function TicketDetails() {
       .single();
 
     if (ticketData) {
-      setTicket(ticketData);
-      let statusText = 'Open';
-      if (ticketData.status === 'taken') statusText = 'In Progress';
-      if (ticketData.status === 'closed') statusText = 'Closed';
-      setStatus(statusText as any);
+      const typedTicket = ticketData as TicketRow;
+      setTicket(typedTicket);
+      setStatus(toStatusLabel(typedTicket.status));
     }
 
     const { data: commentsData } = await supabase
@@ -99,16 +130,17 @@ export default function TicketDetails() {
       setComments(commentsData.map(c => ({
         id: c.id,
         author: c.author_role === 'technician' ? 'IT Support' : 'User',
-        role: c.author_role as any,
+        role: c.author_role === 'technician' ? 'technician' : 'employee',
         message: c.message,
-        timestamp: new Date(c.created_at).toLocaleString(),
+        timestamp: c.created_at ? new Date(c.created_at).toLocaleString() : '-',
       })));
     }
   };
 
   const handleStatusChange = async (value: string) => {
-    setStatus(value as any);
-    const mappedStatus = value === 'Open' ? 'pending' : value === 'In Progress' ? 'taken' : 'closed';
+    if (!isTicketStatus(value)) return;
+    setStatus(value);
+    const mappedStatus = toTicketState(value);
     await supabase.from('tickets').update({ status: mappedStatus }).eq('id', safeTicketId);
   };
 
@@ -128,7 +160,7 @@ export default function TicketDetails() {
           author: 'IT Support',
           role: 'technician',
           message: data.message,
-          timestamp: new Date(data.created_at).toLocaleString(),
+          timestamp: data.created_at ? new Date(data.created_at).toLocaleString() : '-',
         }]);
         setNewComment('');
       }
@@ -144,6 +176,7 @@ export default function TicketDetails() {
 
   if (!isAdmin) return null;
   if (!ticket) return <div className="p-8 text-center text-white">Loading ticket...</div>;
+  const employee = getEmployee(ticket.employees);
 
   return (
     <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
@@ -191,11 +224,11 @@ export default function TicketDetails() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-border">
             <div>
               <div className="text-sm text-gray-400 mb-1">Submitted By</div>
-              <div className="text-foreground font-medium">{ticket.employees?.full_name || 'Unknown User'}</div>
+               <div className="text-foreground font-medium">{employee?.full_name || 'Unknown User'}</div>
             </div>
             <div>
               <div className="text-sm text-gray-400 mb-1">Email</div>
-              <div className="text-foreground font-medium">{ticket.employees?.email || '-'}</div>
+               <div className="text-foreground font-medium">{employee?.email || '-'}</div>
             </div>
             <div>
               <div className="text-sm text-gray-400 mb-1">Category</div>

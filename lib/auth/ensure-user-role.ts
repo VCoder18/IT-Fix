@@ -1,4 +1,5 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js'
+import type { Database } from '@/lib/database'
 import { getRoleFromEmail, type UserRole } from '@/lib/auth/roles'
 
 function isValidRole(value: unknown): value is UserRole {
@@ -6,7 +7,7 @@ function isValidRole(value: unknown): value is UserRole {
 }
 
 export async function ensureUserRole(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   user: User
 ): Promise<UserRole> {
   const email = user.email

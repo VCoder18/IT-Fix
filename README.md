@@ -18,7 +18,7 @@ Run `npm run start` to run the production server.
 1. In Supabase Auth provider settings, enable Google.
 2. Add this redirect URL in Supabase:
    `http://localhost:3000/api/auth/callback`
-3. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in your `.env`.
+3. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` in your `.env`.
 
 Role routing is handled in `/api/auth/callback`:
 - emails in `lib/auth/roles.ts` are tagged as `technician`
