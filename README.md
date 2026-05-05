@@ -1,26 +1,29 @@
+IT-Fix - IT Support Extranet
+1. Theme Mapping
+Table A (Users): profiles – Managed via Supabase Auth (Company employees).
 
-  # IT Support Ticket Form
+Table B (Resources): technicians – The support technicians who can be consulted and assigned to tickets.
 
-  This is a code bundle for IT Support Ticket Form. The original project is available at https://www.figma.com/design/0XFYIosJQ7is5EkG7CMkY7/IT-Support-Ticket-Form.
+Table C (Interactions): tickets – The junction table linking employees and technicians with a date and a status (Pending, In Progress, Resolved).
 
-## Running the code
+Storage (Files): ticket-attachments – The storage bucket linked to the ticket, holding bug screenshots or supporting documents (images or PDFs).
 
-Run `npm i` to install the dependencies.
+2. Architecture Analysis
+A. Financial Analysis: OPEX vs. CAPEX
+Using a serverless-oriented architecture (Vercel and Supabase) is financially much more logical and appropriate for launching this project compared to a traditional physical server:
 
-Run `npm run dev` to start the development server.
+CAPEX (Capital Expenditures): A conventional server requires significant upfront costs (purchasing hardware, network switches, backup equipment). With Supabase and Vercel, the initial hardware investment is $0, as the free startup tiers allow you to prototype quickly without acquisition costs.
 
-Run `npm run build` to create a production build.
+OPEX (Operational Expenditures): Unlike traditional hosting where you pay for fixed capacity (even during periods of low activity), cloud solutions charge based on actual usage (Serverless). Costs scale linearly with traffic without incurring human or hardware maintenance costs.
 
-Run `npm run start` to run the production server.
+B. Scalability: Vercel vs. Physical Data Center
+Vercel's approach to scalability differs radically from a physical data center:
 
-## Google OAuth (Supabase)
+Local and physical infrastructure: In a physical data center, accommodating a traffic spike requires additional rack servers and anticipating technical constraints (power consumption, cooling, physical space).
 
-1. In Supabase Auth provider settings, enable Google.
-2. Add this redirect URL in Supabase:
-   `http://localhost:3000/api/auth/callback`
-3. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` in your `.env`.
+Vercel Scalability (Edge & Serverless): Vercel automatically deploys the frontend to a global Edge network. When there is an influx of users, the platform dynamically allocates computing resources without requiring hardware intervention, ensuring high availability and seamless fault tolerance.
 
-Role routing is handled in `/api/auth/callback`:
-- emails in `lib/auth/roles.ts` are tagged as `technician`
-- all other emails are tagged as `employee`
-  
+C. Structured and Unstructured Data
+Structured Data: The relational data stored in the PostgreSQL database tables (tables profiles, technicians, tickets, and ticket_comments), organized into rows and columns according to a strict, typed schema.
+
+Unstructured Data: The binary files and documents (screenshots, bug images, and PDF files) hosted in the Storage bucket. These data lack a fixed schema and are managed as objects identified by their URLs.
