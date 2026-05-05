@@ -42,16 +42,16 @@ export default function Landing() {
         );
       });
 
-      // Background transitions to black as we enter the footer
+      // Background transitions to black as we scroll down
       if (bgRef.current) {
         gsap.to(bgRef.current, {
           backgroundColor: '#000000',
           ease: 'none',
           scrollTrigger: {
-            trigger: '#section-cta',
-            start: 'top 60%',
-            end: 'top top',
-            scrub: 1,
+            trigger: mainRef.current,
+            start: 'top top',
+            end: 'bottom bottom',
+            scrub: true,
           },
         });
       }
@@ -71,7 +71,7 @@ export default function Landing() {
         <section id="section-hero" className="relative min-h-screen flex flex-col justify-center text-center">
           <div className="reveal">
             <h1 className="text-6xl md:text-8xl mb-6 font-bold tracking-tighter">
-              Welcome to <span className="text-green-500">ITFix</span>
+              Welcome to <span className="text-green-500">IT-Fix</span>
             </h1>
             <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-2xl mx-auto font-light">
               Fast, reliable IT support for your business. Submit a ticket and our expert team will get you back on track in no time.

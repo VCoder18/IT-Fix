@@ -3,6 +3,7 @@ import React, { useRef, useEffect } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Cpu } from 'lucide-react';
+import Image from 'next/image';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -97,7 +98,7 @@ export function TesseractBackground() {
     <div
       ref={containerRef}
       className="fixed inset-0 overflow-hidden pointer-events-none z-0 flex items-center justify-center"
-      style={{ opacity: 0.25 }}
+      style={{ opacity: 0.4 }}
     >
       <div
         ref={shapeRef}
@@ -105,8 +106,15 @@ export function TesseractBackground() {
         style={{ perspective: '1000px' }}
       >
         {/* Center Icon */}
-        <div ref={iconRef} className="absolute text-green-500 z-50 animate-pulse">
-          <Cpu size={80} strokeWidth={1} />
+        <div ref={iconRef} className="absolute z-50 pointer-events-none animate-pulse">
+          <img 
+            src="/Logo.svg" 
+            alt="IT-Fix Logo" 
+            style={{ 
+              width: '100px', 
+              height: 'auto',
+            }} 
+          />
         </div>
 
         {/* Outer Cube */}
