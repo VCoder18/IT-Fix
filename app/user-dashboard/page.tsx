@@ -190,7 +190,7 @@ export default function UserDashboard() {
           <Link href="/" className="px-4 py-2 rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium">
             Home
           </Link>
-          <Link href="/technicians" className="px-4 py-2 rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium">
+          <Link href="/technicians" className="px-6 py-3 rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium">
             Browse Technicians
           </Link>
           <Button
