@@ -8,6 +8,13 @@ import { ensureUserRole } from '@/lib/auth/ensure-user-role';
 import type { Tables } from '@/lib/database';
 import { Button } from '@/components/ui/button';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -17,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from '@/components/ui/label';
 
 type Ticket = {
   id: string;
@@ -38,6 +46,8 @@ type TicketRow = Pick<
     | Pick<Tables<'employees'>, 'full_name'>[]
     | null;
 };
+
+type TechnicianStatus = Tables<'technicians'>['status'];
 
 function getSubmittedBy(
   relation:
@@ -63,7 +73,12 @@ function toUrgencyLabel(urgency: string): Ticket['urgency'] {
   return 'Medium';
 }
 
-// Mock tickets removed in favor of Supabase data
+function toTechnicianStatusValue(status: string): TechnicianStatus | null {
+  if (status === 'available' || status === 'busy' || status === 'absent') {
+    return status;
+  }
+  return null;
+}
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -71,6 +86,9 @@ export default function AdminDashboard() {
   const [filter, setFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [adminStatus, setAdminStatus] = useState<TechnicianStatus>('available');
+  const [isUpdatingAdminStatus, setIsUpdatingAdminStatus] = useState(false);
 
   useEffect(() => {
     const checkAdminAccess = async () => {
@@ -93,7 +111,9 @@ export default function AdminDashboard() {
           return;
         }
 
+        setCurrentUserId(user.id);
         setIsAdmin(true);
+        fetchAdminStatus(user.id);
         fetchTickets();
       } catch (error) {
         const message =
@@ -107,6 +127,18 @@ export default function AdminDashboard() {
 
     checkAdminAccess();
   }, [router]);
+
+  const fetchAdminStatus = async (userId: string) => {
+    const { data } = await supabase
+      .from('technicians')
+      .select('status')
+      .eq('id', userId)
+      .single();
+
+    if (data?.status) {
+      setAdminStatus(data.status);
+    }
+  };
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -149,6 +181,26 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAdminStatusChange = async (value: string) => {
+    const nextStatus = toTechnicianStatusValue(value);
+    if (!nextStatus || !currentUserId) return;
+
+    const previousStatus = adminStatus;
+    setAdminStatus(nextStatus);
+    setIsUpdatingAdminStatus(true);
+
+    const { error } = await supabase
+      .from('technicians')
+      .update({ status: nextStatus })
+      .eq('id', currentUserId);
+
+    if (error) {
+      setAdminStatus(previousStatus);
+    }
+
+    setIsUpdatingAdminStatus(false);
+  };
+
   const urgencyVariants: Record<string, "outline" | "default" | "secondary" | "destructive"> = {
     Low: "outline",
     Medium: "secondary",
@@ -157,10 +209,10 @@ export default function AdminDashboard() {
   };
 
   const statusColors: Record<string, string> = {
-    Open: 'bg-gray-500 hover:bg-gray-600',
-    'In Progress': 'bg-blue-500 hover:bg-blue-600',
-    Resolved: 'bg-green-500 hover:bg-green-600',
-    Closed: 'bg-gray-800 hover:bg-gray-900',
+    Open: '!bg-gray-500 !text-white',
+    'In Progress': '!bg-blue-500 !text-white',
+    Resolved: '!bg-green-500 !text-white',
+    Closed: '!bg-gray-800 !text-white',
   };
 
   const filteredTickets = tickets.filter(t => {
@@ -181,7 +233,28 @@ export default function AdminDashboard() {
   return (
     <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
+        <div className="space-y-3">
+          <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
+          <div className="flex items-center gap-3">
+            <Label htmlFor="admin-status-select" className="text-xs text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+              My Status
+            </Label>
+            <Select value={adminStatus} onValueChange={handleAdminStatusChange}>
+              <SelectTrigger
+                id="admin-status-select"
+                disabled={isUpdatingAdminStatus}
+                className="w-[170px] bg-muted border-border text-foreground"
+              >
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent className="bg-card border-border text-foreground">
+                <SelectItem value="available">Available</SelectItem>
+                <SelectItem value="busy">Busy</SelectItem>
+                <SelectItem value="absent">Offline</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-8 items-center">
           <Link href="/" className="px-4 py-2 rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium">
             Home
@@ -208,7 +281,7 @@ export default function AdminDashboard() {
             <div className="text-3xl font-bold text-foreground">{stats.total}</div>
           </CardContent>
         </Card>
-        <Card className="bg-card border-border shadow-sm">
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">Open</CardTitle>
           </CardHeader>
@@ -216,7 +289,7 @@ export default function AdminDashboard() {
             <div className="text-3xl font-bold text-gray-300">{stats.open}</div>
           </CardContent>
         </Card>
-        <Card className="bg-card border-border shadow-sm">
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">In Progress</CardTitle>
           </CardHeader>
@@ -224,7 +297,7 @@ export default function AdminDashboard() {
             <div className="text-3xl font-bold text-blue-500">{stats.inProgress}</div>
           </CardContent>
         </Card>
-        <Card className="bg-card border-border shadow-sm">
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">Resolved</CardTitle>
           </CardHeader>
@@ -266,39 +339,39 @@ export default function AdminDashboard() {
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="max-h-[560px] overflow-auto">
+            <Table className="table-fixed min-w-[1290px]">
               <TableHeader className="bg-muted/30">
                 <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-gray-300 font-bold">Ticket ID</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Title</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Category</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Urgency</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Status</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Submitted By</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Date</TableHead>
-                  <TableHead className="text-gray-300 font-bold">Actions</TableHead>
+                  <TableHead className="w-[120px] px-4 md:px-6 text-gray-300 font-bold">Ticket ID</TableHead>
+                  <TableHead className="w-[240px] px-4 md:px-6 text-gray-300 font-bold">Title</TableHead>
+                  <TableHead className="w-[150px] px-4 md:px-6 text-gray-300 font-bold">Category</TableHead>
+                  <TableHead className="w-[110px] px-4 md:px-6 text-gray-300 font-bold">Urgency</TableHead>
+                  <TableHead className="w-[130px] px-4 md:px-6 text-gray-300 font-bold">Status</TableHead>
+                  <TableHead className="w-[170px] px-4 md:px-6 text-gray-300 font-bold">Submitted By</TableHead>
+                  <TableHead className="w-[180px] px-4 md:px-6 text-gray-300 font-bold">Date</TableHead>
+                  <TableHead className="w-[190px] px-4 md:px-6 text-center text-gray-300 font-bold">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTickets.map(ticket => (
                   <TableRow key={ticket.id} className="border-border hover:bg-muted/20">
-                    <TableCell className="font-medium text-foreground">{ticket.short_id}</TableCell>
-                    <TableCell className="text-foreground">{ticket.title}</TableCell>
-                    <TableCell className="text-muted-foreground">{ticket.category}</TableCell>
-                    <TableCell>
+                    <TableCell className="px-4 md:px-6 font-medium text-foreground">{ticket.short_id}</TableCell>
+                    <TableCell className="px-4 md:px-6 text-foreground">{ticket.title}</TableCell>
+                    <TableCell className="px-4 md:px-6 text-muted-foreground">{ticket.category}</TableCell>
+                    <TableCell className="px-4 md:px-6">
                       <Badge variant={urgencyVariants[ticket.urgency]}>
                         {ticket.urgency}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <Badge className={`${statusColors[ticket.status]} border-none text-white shadow-sm`}>
+                    <TableCell className="px-4 md:px-6">
+                      <Badge className={`${statusColors[ticket.status]} border-none shadow-sm`}>
                         {ticket.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{ticket.submittedBy}</TableCell>
-                    <TableCell className="text-muted-foreground whitespace-nowrap">{ticket.submittedAt}</TableCell>
-                    <TableCell>
+                    <TableCell className="px-4 md:px-6 text-muted-foreground">{ticket.submittedBy}</TableCell>
+                    <TableCell className="px-4 md:px-6 text-muted-foreground whitespace-nowrap">{ticket.submittedAt}</TableCell>
+                    <TableCell className="px-4 md:px-6 text-center">
                       <Link
                         href={`/ticket/${ticket.id}`}
                         className="text-green-500 hover:text-green-400 font-medium"
@@ -310,7 +383,7 @@ export default function AdminDashboard() {
                 ))}
                 {filteredTickets.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-400">
+                    <TableCell colSpan={8} className="px-4 md:px-6 text-center py-8 text-gray-400">
                       No tickets found for the selected filter.
                     </TableCell>
                   </TableRow>

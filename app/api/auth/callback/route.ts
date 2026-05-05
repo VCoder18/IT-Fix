@@ -27,11 +27,8 @@ export async function GET(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
   if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
-    return NextResponse.redirect(
-      new URL('/login?error=Missing%20Supabase%20configuration', requestUrl.origin)
-    )
+    throw new Error("Missing supabase env variables");
   }
 
   const cookieStore = await cookies()
@@ -65,7 +62,6 @@ export async function GET(request: Request) {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser()
-
   if (userError || !user?.email) {
     return NextResponse.redirect(
       new URL('/login?error=Unable%20to%20read%20authenticated%20user', requestUrl.origin)
@@ -73,6 +69,8 @@ export async function GET(request: Request) {
   }
 
   const role = getRoleFromEmail(user.email)
+  console.log(role, user.email);
+
   const fullName =
     (typeof user.user_metadata?.full_name === 'string' && user.user_metadata.full_name.trim()) ||
     (typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()) ||
