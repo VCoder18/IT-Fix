@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -43,26 +44,42 @@ function SubmitTicketContent() {
   });
   const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ticketId = Math.random().toString(36).substring(2, 10).toUpperCase();
     setSubmitted(true);
-    setTimeout(() => {
-      alert(`Ticket submitted successfully! Your ticket ID is: ${ticketId}`);
+    
+    // Attempt to save to Supabase
+    const { data, error } = await supabase.from('tickets').insert({
+      title: formData.title,
+      description: formData.description,
+      category: formData.category,
+      urgency: formData.urgency,
+      status: 'pending'
+    }).select().single();
+
+    if (error) {
+      console.error('Error submitting ticket:', error);
+      alert('Error submitting ticket. Check console for details.');
       setSubmitted(false);
-      setFormData({
-        title: '',
-        description: '',
-        category: 'Hardware',
-        urgency: 'Medium',
-        name: '',
-        email: '',
-      });
-    }, 500);
+      return;
+    }
+
+    const ticketId = data?.short_id || data?.id.substring(0, 8);
+    alert(`Ticket submitted successfully! Your ticket ID is: ${ticketId}`);
+    setSubmitted(false);
+    setFormData({
+      title: '',
+      description: '',
+      category: 'Hardware',
+      urgency: 'Medium',
+      name: '',
+      email: '',
+    });
+    router.push('/user-dashboard');
   };
 
   return (
-    <main className="max-w-4xl mx-auto py-8 px-6 text-white">
+    <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
       <div className="flex items-center gap-4 mb-6">
         <Link
           href="/"
@@ -73,26 +90,26 @@ function SubmitTicketContent() {
       </div>
 
       {technicianName && (
-        <div className="bg-blue-900/50 border border-blue-700 rounded-lg p-4 mb-6">
-          <p className="text-blue-200">
-            Submitting ticket to: <span className="font-medium text-white">{technicianName}</span>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 shadow-sm">
+          <p className="text-blue-700">
+            Submitting ticket to: <span className="font-medium text-blue-900">{technicianName}</span>
           </p>
         </div>
       )}
 
-      <p className="text-center text-gray-300 mb-8">
+      <p className="text-center text-muted-foreground mb-8">
         Report an issue — we'll get you back on track
       </p>
 
-      <Card className="bg-slate-800 border-slate-700 mb-8">
+      <Card className="bg-card border-border mb-8 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-2xl text-white">Submit a Ticket</CardTitle>
-          <CardDescription className="text-gray-400">Please provide the details of your issue</CardDescription>
+          <CardTitle className="text-2xl text-foreground">Submit a Ticket</CardTitle>
+          <CardDescription className="text-muted-foreground">Please provide the details of your issue</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="title" className="text-gray-200">
+              <Label htmlFor="title" className="text-foreground">
                 Title <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -101,12 +118,12 @@ function SubmitTicketContent() {
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="Brief summary of the issue"
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-400"
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-primary"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description" className="text-gray-200">
+              <Label htmlFor="description" className="text-foreground">
                 Description <span className="text-red-500">*</span>
               </Label>
               <Textarea
@@ -116,21 +133,21 @@ function SubmitTicketContent() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Describe what happened, any error messages, steps to reproduce..."
                 rows={5}
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-400 resize-none"
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground resize-none focus-visible:ring-primary"
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-gray-200">Category</Label>
+                <Label className="text-foreground">Category</Label>
                 <Select
                   value={formData.category}
                   onValueChange={(value) => setFormData({ ...formData, category: value })}
                 >
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                  <SelectTrigger className="bg-muted border-border text-foreground focus:ring-primary">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                  <SelectContent className="bg-card border-border text-foreground">
                     <SelectItem value="Hardware">Hardware</SelectItem>
                     <SelectItem value="Software">Software</SelectItem>
                     <SelectItem value="Network">Network</SelectItem>
@@ -141,15 +158,15 @@ function SubmitTicketContent() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-gray-200">Urgency</Label>
+                <Label className="text-foreground">Urgency</Label>
                 <Select
                   value={formData.urgency}
                   onValueChange={(value) => setFormData({ ...formData, urgency: value })}
                 >
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                  <SelectTrigger className="bg-muted border-border text-foreground focus:ring-primary">
                     <SelectValue placeholder="Select urgency" />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                  <SelectContent className="bg-card border-border text-foreground">
                     <SelectItem value="Low">Low</SelectItem>
                     <SelectItem value="Medium">Medium</SelectItem>
                     <SelectItem value="High">High</SelectItem>
@@ -161,7 +178,7 @@ function SubmitTicketContent() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-gray-200">
+                <Label htmlFor="name" className="text-foreground">
                   Your Name <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -170,11 +187,11 @@ function SubmitTicketContent() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Full name"
-                  className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-400"
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-primary"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-gray-200">
+                <Label htmlFor="email" className="text-foreground">
                   Email <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -184,7 +201,7 @@ function SubmitTicketContent() {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="you@company.com"
-                  className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-400"
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-primary"
                 />
               </div>
             </div>

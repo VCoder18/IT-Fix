@@ -42,73 +42,75 @@ export default function UnifiedLogin() {
   };
 
   return (
-    <main className="max-w-md mx-auto py-16 px-6">
-      <Card className="bg-slate-800 border-slate-700 shadow-xl">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3 hover:rotate-0 transition-transform">
-              <Lock className="w-8 h-8 text-white" />
-            </div>
-          </div>
-          <CardTitle className="text-3xl text-white">Login</CardTitle>
-          <CardDescription className="text-gray-300">Sign in to access your portal</CardDescription>
-        </CardHeader>
+    <main className="min-h-screen w-full flex items-center justify-center p-6 relative bg-background text-foreground">
+      <Link 
+        href="/" 
+        className="absolute top-6 left-6 text-green-600 hover:text-green-700 text-base font-medium flex items-center gap-2 z-10 bg-card p-2 rounded-lg shadow-sm border border-border"
+      >
+        <span>←</span> Back to Home
+      </Link>
 
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm">
-                {error}
+      <div className="w-full max-w-2xl">
+        <Card className="bg-card border-border shadow-xl">
+          <CardHeader className="text-center pt-10 px-8 pb-6">
+            <div className="flex justify-center mb-6">
+              <div className="w-20 h-20 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3 hover:rotate-0 transition-transform">
+                <Lock className="w-10 h-10 text-white" />
               </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-gray-200">
-                Email Address <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="you@company.com"
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-400"
-              />
             </div>
+            <CardTitle className="text-4xl text-white font-bold tracking-tight">Login</CardTitle>
+            <CardDescription className="text-gray-300 text-lg mt-2">Sign in to access your portal</CardDescription>
+          </CardHeader>
 
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-gray-200">
-                Password <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="••••••••"
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-400"
-              />
-            </div>
+          <CardContent className="px-8 pb-8">
+            <form onSubmit={handleSubmit} className="space-y-8">
+              {error && (
+                <div className="p-4 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-base">
+                  {error}
+                </div>
+              )}
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-green-600 hover:bg-green-700 text-white h-12"
-            >
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
+              <div className="space-y-3">
+                <Label htmlFor="email" className="text-foreground text-base font-medium">
+                  Email Address <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  required
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="you@company.com"
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-14 text-lg px-4 focus-visible:ring-primary"
+                />
+              </div>
 
-            <div className="text-center">
-              <Link href="/" className="text-green-500 hover:text-green-400 text-sm">
-                ← Back to Home
-              </Link>
-            </div>
-          </form>
-        </CardContent>
+              <div className="space-y-3">
+                <Label htmlFor="password" className="text-foreground text-base font-medium">
+                  Password <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="••••••••"
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-14 text-lg px-4 focus-visible:ring-primary"
+                />
+              </div>
 
-        <CardFooter className="flex flex-col border-t border-slate-700 pt-6 space-y-4">
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-green-600 hover:bg-green-700 text-white h-14 text-lg font-medium rounded-xl mt-4"
+              >
+                {loading ? 'Signing in...' : 'Sign In'}
+              </Button>
+            </form>
+          </CardContent>
+
+        <CardFooter className="flex flex-col border-t border-border p-8 space-y-4 bg-muted/50 rounded-b-xl">
           <div className="text-xs text-gray-400 text-center space-y-2">
             <p>Demo credentials:</p>
             <p>
@@ -119,7 +121,8 @@ export default function UnifiedLogin() {
             </p>
           </div>
         </CardFooter>
-      </Card>
+        </Card>
+      </div>
     </main>
   );
 }

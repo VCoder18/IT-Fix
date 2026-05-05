@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -17,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Ticket = {
   id: string;
+  short_id: string;
   title: string;
   description: string;
   category: string;
@@ -26,42 +28,13 @@ type Ticket = {
   assignedTo?: string;
 };
 
-const mockUserTickets: Ticket[] = [
-  {
-    id: 'A1B2C3D4',
-    title: 'Laptop won\'t turn on',
-    description: 'My laptop suddenly stopped turning on this morning.',
-    category: 'Hardware',
-    urgency: 'High',
-    status: 'In Progress',
-    submittedAt: '2026-05-04 09:30',
-    assignedTo: 'Sarah Johnson',
-  },
-  {
-    id: 'X9Y8Z7W6',
-    title: 'Email not syncing',
-    description: 'My Outlook emails are not syncing across devices.',
-    category: 'Email',
-    urgency: 'Medium',
-    status: 'Open',
-    submittedAt: '2026-05-03 14:20',
-  },
-  {
-    id: 'P5Q4R3S2',
-    title: 'VPN connection dropping',
-    description: 'VPN keeps disconnecting every few minutes.',
-    category: 'Network',
-    urgency: 'High',
-    status: 'Resolved',
-    submittedAt: '2026-05-02 11:15',
-    assignedTo: 'Michael Chen',
-  },
-];
+// Mock tickets removed in favor of Supabase data
 
 export default function UserDashboard() {
   const router = useRouter();
-  const [tickets] = useState<Ticket[]>(mockUserTickets);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isUser, setIsUser] = useState(false);
 
   useEffect(() => {
@@ -70,8 +43,48 @@ export default function UserDashboard() {
       router.push('/login');
     } else {
       setIsUser(true);
+      fetchTickets();
     }
   }, [router]);
+
+  const fetchTickets = async () => {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select(`
+        id,
+        short_id,
+        title,
+        description,
+        category,
+        urgency,
+        status,
+        created_at,
+        technicians ( full_name )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (data && !error) {
+      setTickets(
+        data.map((t: any) => {
+          let statusText = 'Open';
+          if (t.status === 'taken') statusText = 'In Progress';
+          if (t.status === 'closed') statusText = 'Closed';
+
+          return {
+            id: t.id,
+            short_id: t.short_id || t.id.substring(0, 8),
+            title: t.title,
+            description: t.description,
+            category: t.category,
+            urgency: t.urgency,
+            status: statusText as any,
+            submittedAt: new Date(t.created_at).toLocaleString(),
+            assignedTo: t.technicians?.full_name,
+          };
+        })
+      );
+    }
+  };
 
   if (!isUser) return null;
 
@@ -94,9 +107,11 @@ export default function UserDashboard() {
     Closed: 'bg-gray-800 hover:bg-gray-900',
   };
 
-  const filteredTickets = filter === 'All'
-    ? tickets
-    : tickets.filter(t => t.status === filter);
+  const filteredTickets = tickets.filter(t => {
+    const matchesFilter = filter === 'All' || t.status === filter;
+    const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
 
   const stats = {
     total: tickets.length,
@@ -106,23 +121,20 @@ export default function UserDashboard() {
   };
 
   return (
-    <main className="max-w-7xl mx-auto py-8 px-6 text-white">
+    <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <h1 className="text-3xl font-bold">My Tickets</h1>
-        <div className="flex flex-wrap gap-4 items-center">
-          <Link href="/" className="text-green-600 hover:text-green-700 font-medium">
+        <h1 className="text-3xl font-bold text-foreground">My Tickets</h1>
+        <div className="flex flex-wrap gap-8 items-center">
+          <Link href="/" className="px-4 py-2 rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium">
             Home
           </Link>
-          <Link href="/submit" className="text-green-600 hover:text-green-700 font-medium">
-            Submit New Ticket
-          </Link>
-          <Link href="/technicians" className="text-green-600 hover:text-green-700 font-medium">
+          <Link href="/technicians" className="px-4 py-2 rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium">
             Browse Technicians
           </Link>
           <Button
             variant="destructive"
             onClick={handleLogout}
-            className="transition-colors"
+            className="px-6 h-10 font-bold shadow-lg hover:shadow-destructive/20 transition-all"
           >
             Logout
           </Button>
@@ -130,15 +142,15 @@ export default function UserDashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">Total Tickets</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-white">{stats.total}</div>
+            <div className="text-3xl font-bold text-foreground">{stats.total}</div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">Open</CardTitle>
           </CardHeader>
@@ -146,7 +158,7 @@ export default function UserDashboard() {
             <div className="text-3xl font-bold text-gray-300">{stats.open}</div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">In Progress</CardTitle>
           </CardHeader>
@@ -154,7 +166,7 @@ export default function UserDashboard() {
             <div className="text-3xl font-bold text-blue-500">{stats.inProgress}</div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">Resolved</CardTitle>
           </CardHeader>
@@ -164,10 +176,21 @@ export default function UserDashboard() {
         </Card>
       </div>
 
-      <Card className="bg-slate-800 border-slate-700">
-        <CardHeader className="border-b border-slate-700">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <CardTitle className="text-xl text-white">Your Tickets</CardTitle>
+      <Card className="bg-card border-border shadow-md">
+        <CardHeader className="border-b border-border">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4 flex-1 w-full">
+              <CardTitle className="text-xl text-foreground whitespace-nowrap">Your Tickets</CardTitle>
+              <div className="relative flex-1 max-w-md w-full">
+                <input
+                  type="text"
+                  placeholder="Search tickets by title..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-muted border border-border text-foreground px-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all placeholder:text-muted-foreground"
+                />
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               {['All', 'Open', 'In Progress', 'Resolved', 'Closed'].map(status => (
                 <Button
@@ -175,7 +198,7 @@ export default function UserDashboard() {
                   variant={filter === status ? "default" : "secondary"}
                   size="sm"
                   onClick={() => setFilter(status)}
-                  className={filter === status ? "bg-green-600 hover:bg-green-700" : "bg-slate-700 text-gray-200 hover:bg-slate-600 border-none"}
+                  className={filter === status ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm" : "bg-secondary text-secondary-foreground hover:bg-secondary/80 border-none"}
                 >
                   {status}
                 </Button>
@@ -187,8 +210,8 @@ export default function UserDashboard() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-700/50">
-                <TableRow className="border-slate-700 hover:bg-transparent">
+              <TableHeader className="bg-muted/30">
+                <TableRow className="border-border hover:bg-transparent">
                   <TableHead className="text-gray-300 font-bold">Ticket ID</TableHead>
                   <TableHead className="text-gray-300 font-bold">Title</TableHead>
                   <TableHead className="text-gray-300 font-bold">Category</TableHead>
@@ -201,26 +224,26 @@ export default function UserDashboard() {
               </TableHeader>
               <TableBody>
                 {filteredTickets.map(ticket => (
-                  <TableRow key={ticket.id} className="border-slate-700 hover:bg-slate-700/50">
-                    <TableCell className="font-medium text-white">{ticket.id}</TableCell>
-                    <TableCell className="text-white">{ticket.title}</TableCell>
-                    <TableCell className="text-gray-300">{ticket.category}</TableCell>
+                  <TableRow key={ticket.id} className="border-border hover:bg-muted/20">
+                    <TableCell className="font-medium text-foreground">{ticket.short_id}</TableCell>
+                    <TableCell className="text-foreground">{ticket.title}</TableCell>
+                    <TableCell className="text-muted-foreground">{ticket.category}</TableCell>
                     <TableCell>
                       <Badge variant={urgencyVariants[ticket.urgency]}>
                         {ticket.urgency}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge className={`${statusColors[ticket.status]} border-none text-white`}>
+                      <Badge className={`${statusColors[ticket.status]} border-none text-white shadow-sm`}>
                         {ticket.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-gray-300">{ticket.assignedTo || '-'}</TableCell>
-                    <TableCell className="text-gray-300 whitespace-nowrap">{ticket.submittedAt}</TableCell>
+                    <TableCell className="text-muted-foreground">{ticket.assignedTo || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap">{ticket.submittedAt}</TableCell>
                     <TableCell>
                       <Link
                         href={`/user-ticket/${ticket.id}`}
-                        className="text-green-500 hover:text-green-400 font-medium"
+                        className="text-primary hover:bg-primary/10 px-3 py-1.5 rounded-md font-medium transition-all"
                       >
                         View/Edit
                       </Link>

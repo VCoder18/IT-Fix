@@ -4,17 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, Star } from 'lucide-react';
+import { Star } from 'lucide-react';
 
 type Technician = {
   id: string;
@@ -120,72 +112,64 @@ export default function Technicians() {
   });
 
   const availabilityColors: Record<string, string> = {
-    Available: 'bg-green-500',
-    Busy: 'bg-yellow-500',
-    Offline: 'bg-gray-500',
+    Available: 'bg-emerald-500 text-white',
+    Busy: 'bg-amber-500 text-white',
+    Offline: 'bg-slate-500 text-white',
   };
 
   return (
-    <main className="max-w-7xl mx-auto py-8 px-6 text-white">
+    <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/" className="text-green-600 hover:text-green-700 font-medium">
           ← Home
         </Link>
       </div>
 
-      <h1 className="text-3xl font-bold mb-6">Browse Technicians</h1>
+      <h1 className="text-3xl mb-6 text-foreground">Browse Technicians</h1>
 
-      <Card className="bg-slate-800 border-slate-700 mb-8">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-gray-300 text-sm font-medium flex items-center gap-2">
-                <Search className="w-4 h-4" /> Search
-              </label>
-              <Input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name, specialization, or skill..."
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-400"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-gray-300 text-sm font-medium">Filter by Proficiency</label>
-              <Select
-                value={selectedProficiency}
-                onValueChange={setSelectedProficiency}
-              >
-                <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                  <SelectValue placeholder="Select proficiency" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                  <SelectItem value="All">All Proficiencies</SelectItem>
-                  {allProficiencies.map(prof => (
-                    <SelectItem key={prof} value={prof}>{prof}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <div className="bg-card rounded-lg shadow-sm p-6 mb-8 border border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-muted-foreground mb-2 text-sm">Search</label>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, specialization, or skill..."
+              className="w-full px-4 py-3 border border-border bg-muted/50 text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent placeholder:text-muted-foreground"
+            />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <label className="block text-foreground mb-2 text-sm">Filter by Proficiency</label>
+            <select
+              value={selectedProficiency}
+              onChange={(e) => setSelectedProficiency(e.target.value)}
+              className="w-full px-4 py-3 border border-border bg-muted/50 text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+            >
+              <option value="All">All</option>
+              {allProficiencies.map(prof => (
+                <option key={prof} value={prof}>{prof}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredTechnicians.map(tech => (
-          <Card key={tech.id} className="bg-slate-800 border-slate-700 flex flex-col h-full hover:border-green-600/50 transition-colors">
+          <Card key={tech.id} className="bg-card border-border flex flex-col h-full hover:border-primary/50 transition-colors shadow-md">
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 bg-green-600 rounded-full flex items-center justify-center text-white text-xl font-bold">
+                  <div className="w-14 h-14 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-xl font-bold">
                     {tech.avatar}
                   </div>
                   <div>
-                    <CardTitle className="text-lg text-white">{tech.name}</CardTitle>
-                    <CardDescription className="text-gray-400">{tech.specialization}</CardDescription>
+                    <CardTitle className="text-lg text-foreground">{tech.name}</CardTitle>
+                    <CardDescription className="text-muted-foreground">{tech.specialization}</CardDescription>
                   </div>
                 </div>
-                <Badge className={`${availabilityColors[tech.availability]} border-none text-white`}>
+                <Badge className={`${availabilityColors[tech.availability]} border-none rounded-full px-3 py-1 font-medium shadow-sm`}>
                   {tech.availability}
                 </Badge>
               </div>
@@ -197,18 +181,18 @@ export default function Technicians() {
                 <span>{tech.rating}/5.0</span>
               </div>
 
-              <p className="text-sm text-gray-300 line-clamp-3 italic">
+              <p className="text-sm text-muted-foreground line-clamp-3 italic">
                 &ldquo;{tech.bio}&rdquo;
               </p>
 
               <div>
-                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">Proficiencies</p>
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">Proficiencies</p>
                 <div className="flex flex-wrap gap-1">
                   {tech.proficiencies.map(prof => (
                     <Badge
                       key={prof}
                       variant="secondary"
-                      className="bg-slate-700 text-gray-300 text-[10px] py-0 px-2"
+                      className="bg-muted text-foreground text-[10px] py-0 px-2"
                     >
                       {prof}
                     </Badge>
@@ -232,7 +216,7 @@ export default function Technicians() {
       </div>
 
       {filteredTechnicians.length === 0 && (
-        <div className="text-center py-12 text-gray-400 bg-slate-800/50 rounded-lg border border-dashed border-slate-700">
+        <div className="text-center py-12 text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border">
           No technicians found matching your criteria.
         </div>
       )}

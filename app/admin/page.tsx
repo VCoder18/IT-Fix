@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -17,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Ticket = {
   id: string;
+  short_id: string;
   title: string;
   category: string;
   urgency: 'Low' | 'Medium' | 'High' | 'Critical';
@@ -25,58 +27,13 @@ type Ticket = {
   submittedAt: string;
 };
 
-const mockTickets: Ticket[] = [
-  {
-    id: 'A1B2C3D4',
-    title: 'Laptop won\'t turn on',
-    category: 'Hardware',
-    urgency: 'High',
-    status: 'In Progress',
-    submittedBy: 'John Smith',
-    submittedAt: '2026-05-04 09:30',
-  },
-  {
-    id: 'E5F6G7H8',
-    title: 'Cannot access email',
-    category: 'Email',
-    urgency: 'Medium',
-    status: 'Open',
-    submittedBy: 'Sarah Johnson',
-    submittedAt: '2026-05-04 10:15',
-  },
-  {
-    id: 'I9J0K1L2',
-    title: 'Printer not responding',
-    category: 'Hardware',
-    urgency: 'Low',
-    status: 'Open',
-    submittedBy: 'Mike Davis',
-    submittedAt: '2026-05-04 11:00',
-  },
-  {
-    id: 'M3N4O5P6',
-    title: 'VPN connection issues',
-    category: 'Network',
-    urgency: 'Critical',
-    status: 'Open',
-    submittedBy: 'Emily Chen',
-    submittedAt: '2026-05-04 08:45',
-  },
-  {
-    id: 'Q7R8S9T0',
-    title: 'Software installation request',
-    category: 'Software',
-    urgency: 'Low',
-    status: 'Resolved',
-    submittedBy: 'David Wilson',
-    submittedAt: '2026-05-03 14:20',
-  },
-];
+// Mock tickets removed in favor of Supabase data
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -85,8 +42,46 @@ export default function AdminDashboard() {
       router.push('/login');
     } else {
       setIsAdmin(true);
+      fetchTickets();
     }
   }, [router]);
+
+  const fetchTickets = async () => {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select(`
+        id,
+        short_id,
+        title,
+        category,
+        urgency,
+        status,
+        created_at,
+        employees ( full_name )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (data && !error) {
+      setTickets(
+        data.map((t: any) => {
+          let statusText = 'Open';
+          if (t.status === 'taken') statusText = 'In Progress';
+          if (t.status === 'closed') statusText = 'Closed';
+
+          return {
+            id: t.id,
+            short_id: t.short_id || t.id.substring(0, 8),
+            title: t.title,
+            category: t.category,
+            urgency: t.urgency,
+            status: statusText as any,
+            submittedBy: t.employees?.full_name || 'Unknown',
+            submittedAt: new Date(t.created_at).toLocaleString(),
+          };
+        })
+      );
+    }
+  };
 
   if (!isAdmin) return null;
 
@@ -109,9 +104,11 @@ export default function AdminDashboard() {
     Closed: 'bg-gray-800 hover:bg-gray-900',
   };
 
-  const filteredTickets = filter === 'All'
-    ? tickets
-    : tickets.filter(t => t.status === filter);
+  const filteredTickets = tickets.filter(t => {
+    const matchesFilter = filter === 'All' || t.status === filter;
+    const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
 
   const stats = {
     total: tickets.length,
@@ -121,26 +118,20 @@ export default function AdminDashboard() {
   };
 
   return (
-    <main className="max-w-7xl mx-auto py-8 px-6 text-white">
+    <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <div className="flex gap-4 items-center">
-          <Link
-            href="/"
-            className="text-green-600 hover:text-green-700 font-medium"
-          >
+        <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
+        <div className="flex flex-wrap gap-8 items-center">
+          <Link href="/" className="px-4 py-2 rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium">
             Home
           </Link>
-          <Link
-            href="/submit"
-            className="text-green-600 hover:text-green-700 font-medium"
-          >
+          <Link href="/submit" className="px-4 py-2 rounded-lg text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium">
             Submit Ticket
           </Link>
           <Button
             variant="destructive"
             onClick={handleLogout}
-            className="transition-colors"
+            className="px-6 h-10 font-bold shadow-lg hover:shadow-destructive/20 transition-all"
           >
             Logout
           </Button>
@@ -148,15 +139,15 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">Total Tickets</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-white">{stats.total}</div>
+            <div className="text-3xl font-bold text-foreground">{stats.total}</div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-card border-border shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">Open</CardTitle>
           </CardHeader>
@@ -164,7 +155,7 @@ export default function AdminDashboard() {
             <div className="text-3xl font-bold text-gray-300">{stats.open}</div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-card border-border shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">In Progress</CardTitle>
           </CardHeader>
@@ -172,7 +163,7 @@ export default function AdminDashboard() {
             <div className="text-3xl font-bold text-blue-500">{stats.inProgress}</div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-card border-border shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-gray-400 text-sm font-medium">Resolved</CardTitle>
           </CardHeader>
@@ -182,10 +173,21 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      <Card className="bg-slate-800 border-slate-700">
-        <CardHeader className="border-b border-slate-700">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <CardTitle className="text-xl text-white">All Tickets</CardTitle>
+      <Card className="bg-card border-border shadow-md">
+        <CardHeader className="border-b border-border">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4 flex-1 w-full">
+              <CardTitle className="text-xl text-foreground whitespace-nowrap">All Tickets</CardTitle>
+              <div className="relative flex-1 max-w-md w-full">
+                <input
+                  type="text"
+                  placeholder="Search tickets by title..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-muted border border-border text-foreground px-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all placeholder:text-muted-foreground"
+                />
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               {['All', 'Open', 'In Progress', 'Resolved', 'Closed'].map(status => (
                 <Button
@@ -193,7 +195,7 @@ export default function AdminDashboard() {
                   variant={filter === status ? "default" : "secondary"}
                   size="sm"
                   onClick={() => setFilter(status)}
-                  className={filter === status ? "bg-green-600 hover:bg-green-700" : "bg-slate-700 text-gray-200 hover:bg-slate-600 border-none"}
+                  className={filter === status ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm" : "bg-secondary text-secondary-foreground hover:bg-secondary/80 border-none"}
                 >
                   {status}
                 </Button>
@@ -205,8 +207,8 @@ export default function AdminDashboard() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-700/50">
-                <TableRow className="border-slate-700 hover:bg-transparent">
+              <TableHeader className="bg-muted/30">
+                <TableRow className="border-border hover:bg-transparent">
                   <TableHead className="text-gray-300 font-bold">Ticket ID</TableHead>
                   <TableHead className="text-gray-300 font-bold">Title</TableHead>
                   <TableHead className="text-gray-300 font-bold">Category</TableHead>
@@ -219,22 +221,22 @@ export default function AdminDashboard() {
               </TableHeader>
               <TableBody>
                 {filteredTickets.map(ticket => (
-                  <TableRow key={ticket.id} className="border-slate-700 hover:bg-slate-700/50">
-                    <TableCell className="font-medium text-white">{ticket.id}</TableCell>
-                    <TableCell className="text-white">{ticket.title}</TableCell>
-                    <TableCell className="text-gray-300">{ticket.category}</TableCell>
+                  <TableRow key={ticket.id} className="border-border hover:bg-muted/20">
+                    <TableCell className="font-medium text-foreground">{ticket.short_id}</TableCell>
+                    <TableCell className="text-foreground">{ticket.title}</TableCell>
+                    <TableCell className="text-muted-foreground">{ticket.category}</TableCell>
                     <TableCell>
                       <Badge variant={urgencyVariants[ticket.urgency]}>
                         {ticket.urgency}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge className={`${statusColors[ticket.status]} border-none text-white`}>
+                      <Badge className={`${statusColors[ticket.status]} border-none text-white shadow-sm`}>
                         {ticket.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-gray-300">{ticket.submittedBy}</TableCell>
-                    <TableCell className="text-gray-300 whitespace-nowrap">{ticket.submittedAt}</TableCell>
+                    <TableCell className="text-muted-foreground">{ticket.submittedBy}</TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap">{ticket.submittedAt}</TableCell>
                     <TableCell>
                       <Link
                         href={`/ticket/${ticket.id}`}

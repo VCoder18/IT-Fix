@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -27,25 +27,11 @@ type Comment = {
 export default function TicketDetails() {
   const { ticketId } = useParams();
   const router = useRouter();
+  const [ticket, setTicket] = useState<any>(null);
   const [status, setStatus] = useState<'Open' | 'In Progress' | 'Resolved' | 'Closed'>('Open');
   const [newComment, setNewComment] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
-  const [comments, setComments] = useState<Comment[]>([
-    {
-      id: '1',
-      author: 'John Smith',
-      role: 'user',
-      message: 'My laptop suddenly stopped turning on this morning. I tried holding the power button but nothing happens.',
-      timestamp: '2026-05-04 09:30',
-    },
-    {
-      id: '2',
-      author: 'IT Support',
-      role: 'admin',
-      message: 'Thanks for reporting this. Can you check if the charging light is on when you plug in the charger?',
-      timestamp: '2026-05-04 09:45',
-    },
-  ]);
+  const [comments, setComments] = useState<Comment[]>([]);
 
   useEffect(() => {
     const adminAuth = localStorage.getItem('isAdmin');
@@ -53,31 +39,69 @@ export default function TicketDetails() {
       router.push('/login');
     } else {
       setIsAdmin(true);
+      fetchTicket();
     }
-  }, [router]);
+  }, [router, ticketId]);
 
-  if (!isAdmin) return null;
+  const fetchTicket = async () => {
+    const { data: ticketData } = await supabase
+      .from('tickets')
+      .select('*, employees(full_name, email)')
+      .eq('id', ticketId)
+      .single();
 
-  const handleAddComment = (e: React.FormEvent) => {
+    if (ticketData) {
+      setTicket(ticketData);
+      let statusText = 'Open';
+      if (ticketData.status === 'taken') statusText = 'In Progress';
+      if (ticketData.status === 'closed') statusText = 'Closed';
+      setStatus(statusText as any);
+    }
+
+    const { data: commentsData } = await supabase
+      .from('ticket_comments')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: true });
+
+    if (commentsData) {
+      setComments(commentsData.map(c => ({
+        id: c.id,
+        author: c.author_role === 'technician' ? 'IT Support' : 'User',
+        role: c.author_role as any,
+        message: c.message,
+        timestamp: new Date(c.created_at).toLocaleString(),
+      })));
+    }
+  };
+
+  const handleStatusChange = async (value: string) => {
+    setStatus(value as any);
+    const mappedStatus = value === 'Open' ? 'pending' : value === 'In Progress' ? 'taken' : 'closed';
+    await supabase.from('tickets').update({ status: mappedStatus }).eq('id', ticketId);
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newComment.trim()) {
-      setComments([
-        ...comments,
-        {
-          id: Date.now().toString(),
+      const dummyAdminId = '00000000-0000-0000-0000-000000000000';
+      const { data } = await supabase.from('ticket_comments').insert({
+        ticket_id: ticketId,
+        author_id: dummyAdminId,
+        author_role: 'technician',
+        message: newComment
+      }).select().single();
+
+      if (data) {
+        setComments([...comments, {
+          id: data.id,
           author: 'IT Support',
-          role: 'admin',
-          message: newComment,
-          timestamp: new Date().toLocaleString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        },
-      ]);
-      setNewComment('');
+          role: 'technician',
+          message: data.message,
+          timestamp: new Date(data.created_at).toLocaleString(),
+        }]);
+        setNewComment('');
+      }
     }
   };
 
@@ -88,8 +112,11 @@ export default function TicketDetails() {
     Closed: 'bg-gray-800',
   };
 
+  if (!isAdmin) return null;
+  if (!ticket) return <div className="p-8 text-center text-white">Loading ticket...</div>;
+
   return (
-    <main className="max-w-5xl mx-auto py-8 px-6 text-white">
+    <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
       <div className="flex items-center gap-4 mb-8">
         <Link
           href="/admin"
@@ -113,16 +140,16 @@ export default function TicketDetails() {
         </Link>
       </div>
 
-      <Card className="bg-slate-800 border-slate-700 mb-6">
+      <Card className="bg-card border-border mb-6 shadow-md">
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
-              <CardTitle className="text-3xl text-white mb-2">Ticket #{ticketId}</CardTitle>
-              <h2 className="text-xl text-gray-300">Laptop won&apos;t turn on</h2>
+              <CardTitle className="text-3xl text-foreground mb-2">Ticket #{ticket.short_id || ticket.id.substring(0, 8)}</CardTitle>
+              <h2 className="text-xl text-gray-300">{ticket.title}</h2>
             </div>
             <div className="flex gap-3">
-              <Badge variant="default" className="bg-orange-500">
-                High
+              <Badge variant="default" className={ticket.urgency === 'High' || ticket.urgency === 'Critical' ? "bg-orange-500" : ""}>
+                {ticket.urgency}
               </Badge>
               <Badge className={`${statusColors[status]} border-none text-white`}>
                 {status}
@@ -131,29 +158,29 @@ export default function TicketDetails() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-slate-700">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-border">
             <div>
               <div className="text-sm text-gray-400 mb-1">Submitted By</div>
-              <div className="text-white font-medium">John Smith</div>
+              <div className="text-foreground font-medium">{ticket.employees?.full_name || 'Unknown User'}</div>
             </div>
             <div>
               <div className="text-sm text-gray-400 mb-1">Email</div>
-              <div className="text-white font-medium">john.smith@company.com</div>
+              <div className="text-foreground font-medium">{ticket.employees?.email || '-'}</div>
             </div>
             <div>
               <div className="text-sm text-gray-400 mb-1">Category</div>
-              <div className="text-white font-medium">Hardware</div>
+              <div className="text-foreground font-medium">{ticket.category}</div>
             </div>
             <div>
               <div className="text-sm text-gray-400 mb-1">Submitted At</div>
-              <div className="text-white font-medium">2026-05-04 09:30</div>
+              <div className="text-foreground font-medium">{new Date(ticket.created_at).toLocaleString()}</div>
             </div>
           </div>
 
           <div className="mb-6">
             <Label className="text-sm text-gray-400 mb-2 block">Description</Label>
-            <div className="text-gray-200 bg-slate-700/50 p-4 rounded-lg border border-slate-700">
-              My laptop suddenly stopped turning on this morning. I was working on it last night and shut it down normally. When I tried to start it this morning, pressing the power button does nothing - no lights, no sounds, nothing. I&apos;ve tried holding the power button for 30 seconds as suggested online but still no response.
+            <div className="text-muted-foreground bg-muted/20 p-4 rounded-lg border border-border whitespace-pre-wrap leading-relaxed">
+              {ticket.description}
             </div>
           </div>
 
@@ -161,7 +188,7 @@ export default function TicketDetails() {
             <Label htmlFor="status-select" className="text-sm text-gray-400 mb-2 block">Update Status</Label>
             <Select
               value={status}
-              onValueChange={(value) => setStatus(value as any)}
+              onValueChange={handleStatusChange}
             >
               <SelectTrigger id="status-select" className="bg-slate-700 border-slate-600 text-white">
                 <SelectValue placeholder="Update status" />
@@ -177,9 +204,9 @@ export default function TicketDetails() {
         </CardContent>
       </Card>
 
-      <Card className="bg-slate-800 border-slate-700">
+      <Card className="bg-card border-border shadow-md">
         <CardHeader>
-          <CardTitle className="text-xl text-white">Comments & Updates</CardTitle>
+          <CardTitle className="text-xl text-foreground">Comments & Updates</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4 mb-6">
