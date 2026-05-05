@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, redirect } from 'next/navigation';
 import Swal from 'sweetalert2';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
@@ -30,13 +30,16 @@ type TechnicianOption = Pick<Tables<'technicians'>, 'id' | 'full_name'>;
 function SubmitTicketContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preferredTechnicianId = searchParams.get('technician');
+  const technician_id = searchParams.get('technician');
 
-  const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+  if (!technician_id) {
+      return redirect("/user-dashboard")
+  }
+
   const [submitted, setSubmitted] = useState(false);
   const [isEmployee, setIsEmployee] = useState<boolean | null>(null);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
-  const [selectedTechnicianId, setSelectedTechnicianId] = useState<string | null>(null);
+  const [technicianFullname, setTechnicianFullname] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [formData, setFormData] = useState<TicketFormValues>({
@@ -52,7 +55,6 @@ function SubmitTicketContent() {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
-
       if (userError || !user) {
         setIsEmployee(false);
         router.replace('/login');
@@ -76,31 +78,27 @@ function SubmitTicketContent() {
         return;
       }
 
-      const { data: techniciansData, error: techniciansError } = await supabase
+      const { data: technicianData, error: technicianError } = await supabase
         .from('technicians')
         .select('id, full_name')
-        .order('full_name', { ascending: true });
-
-      if (!techniciansError && techniciansData) {
-        const options = techniciansData as TechnicianOption[];
-        setTechnicians(options);
-
-        const initialTechnician =
-          (preferredTechnicianId && options.some((tech) => tech.id === preferredTechnicianId)
-            ? preferredTechnicianId
-            : options[0]?.id) ?? null;
-
-        setEmployeeId(user.id);
-        setSelectedTechnicianId(initialTechnician);
-      } else {
-        setEmployeeId(user.id);
+        .eq('id', technician_id)
+        .single();
+      if (!technicianData || technicianError) {
+        await Swal.fire({
+          icon: 'warning',
+          title: 'Technecian not found',
+          text: `Failed to find technician: ${technicianError.toJSON()}`,
+        });
+        return redirect("/user-dashboard")
       }
 
+      setTechnicianFullname(technicianData.full_name);
+      setEmployeeId(user.id);
       setIsEmployee(true);
     };
 
     setupPage();
-  }, [preferredTechnicianId, router]);
+  }, [technician_id, router]);
 
   useEffect(() => {
     if (!imageFile) {
@@ -116,12 +114,8 @@ function SubmitTicketContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!employeeId || !selectedTechnicianId) {
-      await Swal.fire({
-        icon: 'error',
-        title: 'No technician available',
-        text: 'No technician is available right now.',
-      });
+
+    if (!employeeId) {
       return;
     }
     if (!imageFile) {
@@ -188,7 +182,7 @@ function SubmitTicketContent() {
       urgency: formData.urgency,
       image_url: imagePath,
       employee_id: employeeId,
-      technician_id: selectedTechnicianId,
+      technician_id: technician_id,
     };
 
     const { data, error } = await supabase
@@ -197,7 +191,7 @@ function SubmitTicketContent() {
       .select()
       .single();
 
-    if (error) {
+    if (!data || error) {
       await Swal.fire({
         icon: 'error',
         title: 'Ticket submission failed',
@@ -207,20 +201,18 @@ function SubmitTicketContent() {
       return;
     }
 
-    const ticketId = data?.short_id || data?.id.substring(0, 8);
-    await Swal.fire({
-      icon: 'success',
-      title: 'Ticket submitted',
-      text: `Ticket submitted successfully! Your ticket ID is: ${ticketId}`,
-    });
     setSubmitted(false);
     setImageFile(null);
-    router.push('/user-dashboard');
+    router.push(`/ticket/${data.id}`);
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'Ticket created',
+      text: `ticket created with short-id: ${data.short_id}`,
+    });
   };
 
   if (isEmployee !== true) return null;
-  const selectedTechnicianName =
-    technicians.find((tech) => tech.id === selectedTechnicianId)?.full_name ?? 'Not selected';
 
   return (
     <main className="w-full py-8 px-6 md:px-12 lg:px-20 text-foreground bg-background">
@@ -237,7 +229,7 @@ function SubmitTicketContent() {
         <CardHeader>
           <CardTitle className="text-2xl text-foreground">Submit a Ticket</CardTitle>
           <CardDescription className="text-muted-foreground">
-            Assigned technician: <span className="font-medium text-foreground">{selectedTechnicianName}</span>
+            Assigned technician: <span className="font-medium text-foreground">{technicianFullname}</span>
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -340,7 +332,7 @@ function SubmitTicketContent() {
 
             <Button
               type="submit"
-              disabled={submitted || !employeeId || !selectedTechnicianId || !imageFile}
+              disabled={submitted || !employeeId || !imageFile}
               className="w-full bg-green-600 hover:bg-green-700 text-white h-12 text-lg"
             >
               {submitted ? 'Submitting...' : 'Submit Ticket →'}

@@ -2,17 +2,13 @@
 
 **Student Project — Architecture & Infrastructure Analysis**
 
----
-
 ## 1. Theme Mapping
 To facilitate the correction and review of our database and storage setup, here is the mapping of the data model used for the IT-Fix application:
 
-* **Table A (Users):** `profiles` – Managed via Supabase Auth (Stores the company employees and internal staff accounts).
-* **Table B (Resources):** `technicians` – The support technicians that can be consulted and assigned to incoming IT tickets.
-* **Table C (Interactions):** `tickets` – The main relational table linking employees and technicians, complete with creation dates, updates, and current status (*Closed*, *In Progress*, *Open*).
-* **Storage (Files):** `ticket-attachments` – The storage bucket linked to tickets, which holds bug screenshots or supporting PDF documents.
-
----
+* **Table A (Employees):** `public.employees` - Employees can consult a technician by assignning him a ticket based on the issue's category.
+* **Table B (Resources):** `public.technicians` - Technicians can be consulted and assigned to incoming IT tickets.
+* **Table C (Interactions):** `public.tickets` - The main relational table linking employees and technicians, complete with creation dates, updates, and current status (*Closed*, *In Progress*, *Open*).
+* **Storage (Files):** `ticket-images` - The storage bucket linked to tickets, which stores bug/issue screenshots.
 
 ## 2. Architecture Analysis
 

@@ -207,23 +207,21 @@ export default function UserDashboard() {
     setTickets((current) => current.filter((t) => t.id !== ticket.id));
 
     const deletedImagePath = deletedRows[0]?.image_url ?? ticket.imageUrl;
+    let cleanupWarning: string | null = null;
     if (deletedImagePath) {
       const { error: storageError } = await supabase.storage
         .from('ticket-images')
         .remove([deletedImagePath]);
 
       if (storageError) {
-        await Swal.fire({
-          icon: 'warning',
-          title: 'Ticket deleted with warning',
-          text: `Ticket was removed, but image cleanup failed: ${storageError.message}`,
-        });
+        cleanupWarning = storageError.message;
       }
     }
 
     await Swal.fire({
       icon: 'success',
       title: 'Ticket deleted',
+      text: cleanupWarning ? `Image cleanup failed: ${cleanupWarning}` : undefined,
     });
 
     setDeletingTicketId(null);
@@ -237,10 +235,10 @@ export default function UserDashboard() {
   };
 
   const statusColors: Record<string, string> = {
-    Open: 'bg-gray-500 hover:bg-gray-600',
-    'In Progress': 'bg-blue-500 hover:bg-blue-600',
-    Resolved: 'bg-green-500 hover:bg-green-600',
-    Closed: 'bg-gray-800 hover:bg-gray-900',
+    Open: '!bg-gray-500 !text-white',
+    'In Progress': '!bg-blue-500 !text-white',
+    Resolved: '!bg-green-500 !text-white',
+    Closed: '!bg-gray-800 !text-white',
   };
 
   const filteredTickets = tickets.filter(t => {
@@ -346,18 +344,18 @@ export default function UserDashboard() {
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="max-h-[560px] overflow-auto">
+            <Table className="table-fixed min-w-[1290px]">
               <TableHeader className="bg-muted/30">
                 <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Ticket ID</TableHead>
-                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Title</TableHead>
-                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Category</TableHead>
-                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Urgency</TableHead>
-                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Status</TableHead>
-                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Assigned To</TableHead>
-                  <TableHead className="px-4 md:px-6 text-gray-300 font-bold">Date</TableHead>
-                  <TableHead className="px-4 md:px-6 text-center text-gray-300 font-bold">Actions</TableHead>
+                  <TableHead className="w-[120px] px-4 md:px-6 text-gray-300 font-bold">Ticket ID</TableHead>
+                  <TableHead className="w-[240px] px-4 md:px-6 text-gray-300 font-bold">Title</TableHead>
+                  <TableHead className="w-[150px] px-4 md:px-6 text-gray-300 font-bold">Category</TableHead>
+                  <TableHead className="w-[110px] px-4 md:px-6 text-gray-300 font-bold">Urgency</TableHead>
+                  <TableHead className="w-[130px] px-4 md:px-6 text-gray-300 font-bold">Status</TableHead>
+                  <TableHead className="w-[170px] px-4 md:px-6 text-gray-300 font-bold">Assigned To</TableHead>
+                  <TableHead className="w-[180px] px-4 md:px-6 text-gray-300 font-bold">Date</TableHead>
+                  <TableHead className="w-[190px] px-4 md:px-6 text-center text-gray-300 font-bold">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -372,7 +370,7 @@ export default function UserDashboard() {
                       </Badge>
                     </TableCell>
                     <TableCell className="px-4 md:px-6">
-                      <Badge className={`${statusColors[ticket.status]} border-none text-white shadow-sm`}>
+                      <Badge className={`${statusColors[ticket.status]} border-none shadow-sm`}>
                         {ticket.status}
                       </Badge>
                     </TableCell>
