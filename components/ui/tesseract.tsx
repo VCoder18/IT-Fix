@@ -2,22 +2,18 @@
 import React, { useRef, useEffect } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { Cpu } from 'lucide-react';
-import Image from 'next/image';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export function TesseractBackground() {
   const containerRef = useRef<HTMLDivElement>(null);
   const shapeRef = useRef<HTMLDivElement>(null);
-  const iconRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Wait for DOM to settle so section IDs exist
     const ctx = gsap.context(() => {
       const shape = shapeRef.current;
-      const icon = iconRef.current;
-      if (!shape || !icon) return;
+      if (!shape) return;
 
       // Query all faces globally (not scoped)
       const faces = document.querySelectorAll('.cube-face');
@@ -86,7 +82,6 @@ export function TesseractBackground() {
           faces.forEach((face) => {
             (face as HTMLElement).style.borderRadius = `${35 + p * 15}%`;
           });
-          gsap.set(icon, { opacity: 1 - p });
         },
       });
     });
@@ -105,18 +100,6 @@ export function TesseractBackground() {
         className="relative w-96 h-96 flex items-center justify-center"
         style={{ perspective: '1000px' }}
       >
-        {/* Center Icon */}
-        <div ref={iconRef} className="absolute z-50 pointer-events-none animate-pulse">
-          <img 
-            src="/Logo.svg" 
-            alt="IT-Fix Logo" 
-            style={{ 
-              width: '100px', 
-              height: 'auto',
-            }} 
-          />
-        </div>
-
         {/* Outer Cube */}
         <div className="absolute inset-0 w-full h-full preserve-3d animate-spin-slow">
           <CubeFace offset="12rem" axis="" />
